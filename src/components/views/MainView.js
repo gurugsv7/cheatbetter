@@ -999,7 +999,7 @@ export class MainView extends LitElement {
             <div class="cloud-promo" @click=${() => this._saveMode('cloud')}>
                 <div class="cloud-promo-glow"></div>
                 <div class="cloud-promo-header">
-                    <span class="cloud-promo-title">Switch to Cheating Daddy Cloud</span>
+                    <span class="cloud-promo-title">Switch to ashwinbot Cloud</span>
                     <span class="cloud-promo-arrow">&rarr;</span>
                 </div>
                 <div class="cloud-promo-desc">No API keys, no setup, no billing headaches. It just works.</div>
@@ -1062,7 +1062,7 @@ export class MainView extends LitElement {
             <div class="cloud-promo" @click=${() => this._saveMode('cloud')}>
                 <div class="cloud-promo-glow"></div>
                 <div class="cloud-promo-header">
-                    <span class="cloud-promo-title">Switch to Cheating Daddy Cloud</span>
+                    <span class="cloud-promo-title">Switch to ashwinbot Cloud</span>
                     <span class="cloud-promo-arrow">&rarr;</span>
                 </div>
                 <div class="cloud-promo-desc">No API keys, no setup, no billing headaches. It just works.</div>
@@ -1092,7 +1092,7 @@ export class MainView extends LitElement {
                 ${this._mode === 'local'
                     ? html`
                           <div class="title-row">
-                              <div class="page-title">Cheating Daddy <span class="mode-suffix">Local AI</span></div>
+                              <div class="page-title">ashwinbot <span class="mode-suffix">Local AI</span></div>
                               <button
                                   class="help-btn"
                                   @click=${() => {
@@ -1105,7 +1105,7 @@ export class MainView extends LitElement {
                       `
                     : html`
                           <div class="page-title">
-                              ${this._mode === 'cloud' ? 'Cheating Daddy Cloud' : html`Cheating Daddy <span class="mode-suffix">BYOK</span>`}
+                              ${this._mode === 'cloud' ? 'ashwinbot Cloud' : html`ashwinbot <span class="mode-suffix">BYOK</span>`}
                           </div>
                       `}
                 <div class="page-subtitle">
