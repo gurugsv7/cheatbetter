@@ -137,6 +137,64 @@ function setupStorageIpcHandlers() {
         }
     });
 
+    // ============ AZURE ============
+    ipcMain.handle('storage:get-azure-api-key', async () => {
+        try {
+            return { success: true, data: storage.getAzureApiKey() };
+        } catch (error) {
+            console.error('Error getting Azure API key:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:set-azure-api-key', async (event, azureApiKey) => {
+        try {
+            storage.setAzureApiKey(azureApiKey);
+            return { success: true };
+        } catch (error) {
+            console.error('Error setting Azure API key:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:get-azure-endpoint', async () => {
+        try {
+            return { success: true, data: storage.getAzureEndpoint() };
+        } catch (error) {
+            console.error('Error getting Azure endpoint:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:set-azure-endpoint', async (event, azureEndpoint) => {
+        try {
+            storage.setAzureEndpoint(azureEndpoint);
+            return { success: true };
+        } catch (error) {
+            console.error('Error setting Azure endpoint:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:get-azure-deployment', async () => {
+        try {
+            return { success: true, data: storage.getAzureDeployment() };
+        } catch (error) {
+            console.error('Error getting Azure deployment:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:set-azure-deployment', async (event, azureDeployment) => {
+        try {
+            storage.setAzureDeployment(azureDeployment);
+            return { success: true };
+        } catch (error) {
+            console.error('Error setting Azure deployment:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     // ============ PREFERENCES ============
     ipcMain.handle('storage:get-preferences', async () => {
         try {

@@ -3,7 +3,17 @@ const { BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const { saveDebugAudio } = require('../audioUtils');
 const { getSystemPrompt } = require('./prompts');
-const { getAvailableModel, incrementLimitCount, getApiKey, getGroqApiKey, incrementCharUsage, getModelForToday } = require('../storage');
+const {
+    getAvailableModel,
+    incrementLimitCount,
+    getApiKey,
+    getGroqApiKey,
+    getAzureApiKey,
+    getAzureEndpoint,
+    getAzureDeployment,
+    incrementCharUsage,
+    getModelForToday,
+} = require('../storage');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 
 // Lazy-loaded to avoid circular dependency (localai.js imports from gemini.js)
@@ -46,7 +56,6 @@ module.exports.formatSpeakerResults = formatSpeakerResults;
 let systemAudioProc = null;
 let messageBuffer = '';
 
-
 // Reconnection variables
 let isUserClosing = false;
 let sessionParams = null;
@@ -68,9 +77,7 @@ function buildContextMessage() {
 
     if (validTurns.length === 0) return null;
 
-    const contextLines = validTurns.map(turn =>
-        `[Interviewer]: ${turn.transcription.trim()}\n[Your answer]: ${turn.ai_response.trim()}`
-    );
+    const contextLines = validTurns.map(turn => `[Interviewer]: ${turn.transcription.trim()}\n[Your answer]: ${turn.ai_response.trim()}`);
 
     return `Session reconnected. Here's the conversation so far:\n\n${contextLines.join('\n\n')}\n\nContinue from here.`;
 }
@@ -91,7 +98,7 @@ function initializeNewSession(profile = null, customPrompt = null) {
         sendToRenderer('save-session-context', {
             sessionId: currentSessionId,
             profile: profile,
-            customPrompt: customPrompt || ''
+            customPrompt: customPrompt || '',
         });
     }
 }
@@ -127,7 +134,7 @@ function saveScreenAnalysis(prompt, response, model) {
         timestamp: Date.now(),
         prompt: prompt,
         response: response.trim(),
-        model: model
+        model: model,
     };
 
     screenAnalysisHistory.push(analysisEntry);
@@ -139,7 +146,7 @@ function saveScreenAnalysis(prompt, response, model) {
         analysis: analysisEntry,
         fullHistory: screenAnalysisHistory,
         profile: currentProfile,
-        customPrompt: currentCustomPrompt
+        customPrompt: currentCustomPrompt,
     });
 }
 
@@ -203,19 +210,27 @@ async function getStoredSetting(key, defaultValue) {
 // helper to check if groq has been configured
 function hasGroqKey() {
     const key = getGroqApiKey();
-    return key && key.trim() != ''
+    return key && key.trim() != '';
 }
 
-function trimConversationHistoryForGemma(history, maxChars=42000) {
-    if(!history || history.length === 0) return [];
+// helper to check if azure has been configured
+function hasAzureKey() {
+    const key = getAzureApiKey();
+    const endpoint = getAzureEndpoint();
+    const deployment = getAzureDeployment();
+    return key && key.trim() !== '' && endpoint && endpoint.trim() !== '' && deployment && deployment.trim() !== '';
+}
+
+function trimConversationHistoryForGemma(history, maxChars = 42000) {
+    if (!history || history.length === 0) return [];
     let totalChars = 0;
     const trimmed = [];
 
-    for(let i = history.length - 1; i >= 0; i--) {
+    for (let i = history.length - 1; i >= 0; i--) {
         const turn = history[i];
         const turnChars = (turn.content || '').length;
 
-        if(totalChars + turnChars > maxChars) break;
+        if (totalChars + turnChars > maxChars) break;
         totalChars += turnChars;
         trimmed.unshift(turn);
     }
@@ -249,7 +264,7 @@ async function sendToGroq(transcription) {
 
     groqConversationHistory.push({
         role: 'user',
-        content: transcription.trim()
+        content: transcription.trim(),
     });
 
     if (groqConversationHistory.length > 20) {
@@ -260,19 +275,17 @@ async function sendToGroq(transcription) {
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${groqApiKey}`,
-                'Content-Type': 'application/json'
+                Authorization: `Bearer ${groqApiKey}`,
+                'Content-Type': 'application/json',
             },
             body: JSON.stringify({
                 model: modelToUse,
-                messages: [
-                    { role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' },
-                    ...groqConversationHistory
-                ],
+                messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...groqConversationHistory],
                 stream: true,
-                temperature: 0.7,
-                max_tokens: 1024
-            })
+                temperature: 0.3,
+                top_p: 0.85,
+                max_tokens: 1024,
+            }),
         });
 
         if (!response.ok) {
@@ -330,7 +343,7 @@ async function sendToGroq(transcription) {
         if (cleanedResponse) {
             groqConversationHistory.push({
                 role: 'assistant',
-                content: cleanedResponse
+                content: cleanedResponse,
             });
 
             saveConversationTurn(transcription, cleanedResponse);
@@ -338,10 +351,243 @@ async function sendToGroq(transcription) {
 
         console.log(`Groq response completed (${modelToUse})`);
         sendToRenderer('update-status', 'Listening...');
-
     } catch (error) {
         console.error('Error calling Groq API:', error);
         sendToRenderer('update-status', 'Groq error: ' + error.message);
+    }
+}
+
+async function sendToAzure(transcription) {
+    const azureApiKey = getAzureApiKey();
+    const azureEndpoint = getAzureEndpoint();
+    const azureDeployment = getAzureDeployment();
+
+    if (!azureApiKey || !azureEndpoint || !azureDeployment) {
+        console.log('Azure OpenAI not fully configured, skipping Azure response');
+        return;
+    }
+
+    if (!transcription || transcription.trim() === '') {
+        console.log('Empty transcription, skipping Azure');
+        return;
+    }
+
+    console.log(`Sending to Azure OpenAI (${azureDeployment}):`, transcription.substring(0, 100) + '...');
+
+    // Add screen context to conversation if there's recent screen analysis
+    let messagesWithContext = [...groqConversationHistory];
+    if (screenAnalysisHistory.length > 0) {
+        const lastScreenAnalysis = screenAnalysisHistory[screenAnalysisHistory.length - 1];
+        // Add screen context as assistant message if it's recent (within last 2 minutes)
+        if (Date.now() - lastScreenAnalysis.timestamp < 120000) {
+            messagesWithContext.push({
+                role: 'assistant',
+                content: `[From screen analysis] ${lastScreenAnalysis.response}`,
+            });
+        }
+    }
+
+    groqConversationHistory.push({
+        role: 'user',
+        content: transcription.trim(),
+    });
+
+    if (groqConversationHistory.length > 20) {
+        groqConversationHistory = groqConversationHistory.slice(-20);
+    }
+
+    try {
+        // Azure OpenAI API endpoint format
+        const apiVersion = '2025-04-01-preview';
+        // Clean the endpoint - remove trailing path components if user pasted full URL
+        let baseEndpoint = azureEndpoint.replace(/\/$/, '');
+        // Remove common Azure OpenAI path suffixes if present
+        baseEndpoint = baseEndpoint.replace(/\/openai\/(responses|deployments|completions).*$/i, '');
+        const url = `${baseEndpoint}/openai/deployments/${azureDeployment}/chat/completions?api-version=${apiVersion}`;
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'api-key': azureApiKey,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                messages: [
+                    { role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' },
+                    ...messagesWithContext,
+                ],
+                stream: true,
+                temperature: 1,
+                max_completion_tokens: 1024,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Azure OpenAI API error:', response.status, errorText);
+            sendToRenderer('update-status', `Azure error: ${response.status}`);
+            return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = '';
+        let isFirst = true;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') continue;
+
+                    try {
+                        const json = JSON.parse(data);
+                        const token = json.choices?.[0]?.delta?.content || '';
+                        if (token) {
+                            fullText += token;
+                            const displayText = stripThinkingTags(fullText);
+                            if (displayText) {
+                                sendToRenderer(isFirst ? 'new-response' : 'update-response', displayText);
+                                isFirst = false;
+                            }
+                        }
+                    } catch (parseError) {
+                        // Skip invalid JSON chunks
+                    }
+                }
+            }
+        }
+
+        const cleanedResponse = stripThinkingTags(fullText);
+
+        const systemPromptChars = (currentSystemPrompt || 'You are a helpful assistant.').length;
+        const historyChars = groqConversationHistory.reduce((sum, msg) => sum + (msg.content || '').length, 0);
+        const inputChars = systemPromptChars + historyChars;
+        const outputChars = cleanedResponse.length;
+
+        incrementCharUsage('azure', azureDeployment, inputChars + outputChars);
+
+        if (cleanedResponse) {
+            groqConversationHistory.push({
+                role: 'assistant',
+                content: cleanedResponse,
+            });
+
+            saveConversationTurn(transcription, cleanedResponse);
+        }
+
+        console.log(`Azure OpenAI response completed (${azureDeployment})`);
+        sendToRenderer('update-status', 'Listening...');
+    } catch (error) {
+        console.error('Error calling Azure OpenAI API:', error);
+        sendToRenderer('update-status', 'Azure error: ' + error.message);
+    }
+}
+
+async function sendImageToAzure(base64Data, prompt) {
+    const azureApiKey = getAzureApiKey();
+    const azureEndpoint = getAzureEndpoint();
+    const azureDeployment = getAzureDeployment();
+
+    if (!azureApiKey || !azureEndpoint || !azureDeployment) {
+        return { success: false, error: 'Azure OpenAI not fully configured' };
+    }
+
+    try {
+        const apiVersion = '2025-04-01-preview';
+        let baseEndpoint = azureEndpoint.replace(/\/$/, '');
+        baseEndpoint = baseEndpoint.replace(/\/openai\/(responses|deployments|completions).*$/i, '');
+        const url = `${baseEndpoint}/openai/deployments/${azureDeployment}/chat/completions?api-version=${apiVersion}`;
+
+        const systemInstruction = `You provide direct, minimal answers.
+
+For MCQ questions: Answer with ONLY the letter/option, nothing else.
+For code problems: Provide ONLY the specific code change needed, keep it minimal, no extra imports or complexity.
+For math: Just the final answer.
+For explanations: Keep it to 1-2 sentences max.
+
+Match the simplicity of the question. Don't over-engineer or add unnecessary code.`;
+
+        console.log(`Sending image to Azure OpenAI (${azureDeployment})...`);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'api-key': azureApiKey,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                messages: [
+                    { role: 'system', content: systemInstruction },
+                    {
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'image_url',
+                                image_url: {
+                                    url: `data:image/jpeg;base64,${base64Data}`,
+                                },
+                            },
+                            { type: 'text', text: prompt },
+                        ],
+                    },
+                ],
+                stream: true,
+                temperature: 1,
+                max_completion_tokens: 1024,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Azure OpenAI image API error:', response.status, errorText);
+            return { success: false, error: `Azure error: ${response.status}` };
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = '';
+        let isFirst = true;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') continue;
+
+                    try {
+                        const json = JSON.parse(data);
+                        const token = json.choices?.[0]?.delta?.content || '';
+                        if (token) {
+                            fullText += token;
+                            sendToRenderer(isFirst ? 'new-response' : 'update-response', fullText);
+                            isFirst = false;
+                        }
+                    } catch (parseError) {
+                        // Skip invalid JSON chunks
+                    }
+                }
+            }
+        }
+
+        console.log(`Azure image response completed (${azureDeployment})`);
+        saveScreenAnalysis(prompt, fullText, azureDeployment);
+        return { success: true, text: fullText, model: azureDeployment };
+    } catch (error) {
+        console.error('Error sending image to Azure:', error);
+        return { success: false, error: error.message };
     }
 }
 
@@ -361,7 +607,7 @@ async function sendToGemma(transcription) {
 
     groqConversationHistory.push({
         role: 'user',
-        content: transcription.trim()
+        content: transcription.trim(),
     });
 
     const trimmedHistory = trimConversationHistoryForGemma(groqConversationHistory, 42000);
@@ -371,14 +617,14 @@ async function sendToGemma(transcription) {
 
         const messages = trimmedHistory.map(msg => ({
             role: msg.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: msg.content }]
+            parts: [{ text: msg.content }],
         }));
 
         const systemPrompt = currentSystemPrompt || 'You are a helpful assistant.';
         const messagesWithSystem = [
             { role: 'user', parts: [{ text: systemPrompt }] },
             { role: 'model', parts: [{ text: 'Understood. I will follow these instructions.' }] },
-            ...messages
+            ...messages,
         ];
 
         const response = await ai.models.generateContentStream({
@@ -408,7 +654,7 @@ async function sendToGemma(transcription) {
         if (fullText.trim()) {
             groqConversationHistory.push({
                 role: 'assistant',
-                content: fullText.trim()
+                content: fullText.trim(),
             });
 
             if (groqConversationHistory.length > 40) {
@@ -420,7 +666,6 @@ async function sendToGemma(transcription) {
 
         console.log('Gemma response completed');
         sendToRenderer('update-status', 'Listening...');
-
     } catch (error) {
         console.error('Error calling Gemma API:', error);
         sendToRenderer('update-status', 'Gemma error: ' + error.message);
@@ -487,7 +732,9 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
 
                     if (message.serverContent?.generationComplete) {
                         if (currentTranscription.trim() !== '') {
-                            if (hasGroqKey()) {
+                            if (hasAzureKey()) {
+                                sendToAzure(currentTranscription);
+                            } else if (hasGroqKey()) {
                                 sendToGroq(currentTranscription);
                             } else {
                                 sendToGemma(currentTranscription);
@@ -798,10 +1045,23 @@ async function sendImageToGeminiHttp(base64Data, prompt) {
             { text: prompt },
         ];
 
+        // System instruction for excellent code and answers
+        const systemInstruction = `You provide direct, minimal answers.
+
+For MCQ questions: Answer with ONLY the letter/option, nothing else.
+For code problems: Provide ONLY the specific code change needed, keep it minimal, no extra imports or complexity.
+For math: Just the final answer.
+For explanations: Keep it to 1-2 sentences max.
+
+Match the simplicity of the question. Don't over-engineer or add unnecessary code.`;
+
         console.log(`Sending image to ${model} (streaming)...`);
         const response = await ai.models.generateContentStream({
             model: model,
             contents: contents,
+            config: {
+                systemInstruction: systemInstruction,
+            },
         });
 
         // Increment count after successful call
@@ -972,6 +1232,12 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return result;
             }
 
+            // Use Azure if configured, otherwise fall back to Gemini
+            if (hasAzureKey()) {
+                const result = await sendImageToAzure(data, prompt);
+                return result;
+            }
+
             // Use HTTP API instead of realtime session
             const result = await sendImageToGeminiHttp(data, prompt);
             return result;
@@ -981,11 +1247,16 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
-    ipcMain.handle('send-text-message', async (event, text) => {
+    ipcMain.handle('send-text-message', async (event, text, profile = null) => {
         if (!text || typeof text !== 'string' || text.trim().length === 0) {
             return { success: false, error: 'Invalid text message' };
         }
-
+    
+        // If profile is provided and differs from currentProfile, update session
+        if (profile && profile !== currentProfile) {
+            initializeNewSession(profile);
+        }
+    
         if (currentProviderMode === 'cloud') {
             try {
                 console.log('Sending text to cloud:', text);
@@ -996,7 +1267,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: false, error: error.message };
             }
         }
-
+    
         if (currentProviderMode === 'local') {
             try {
                 console.log('Sending text to local Ollama:', text);
@@ -1006,18 +1277,20 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: false, error: error.message };
             }
         }
-
+    
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
-
+    
         try {
             console.log('Sending text message:', text);
-
-            if (hasGroqKey()) {
+    
+            if (hasAzureKey()) {
+                sendToAzure(text.trim());
+            } else if (hasGroqKey()) {
                 sendToGroq(text.trim());
             } else {
                 sendToGemma(text.trim());
             }
-
+    
             await geminiSessionRef.current.sendRealtimeInput({ text: text.trim() });
             return { success: true };
         } catch (error) {

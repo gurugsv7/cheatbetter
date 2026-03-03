@@ -233,6 +233,11 @@ async function sendToOllama(transcription) {
             model: ollamaModel,
             messages,
             stream: true,
+            options: {
+                temperature: 0.3,
+                top_p: 0.85,
+                repeat_penalty: 1.1,
+            },
         });
 
         let fullText = '';
@@ -398,6 +403,11 @@ async function sendLocalImage(base64Data, prompt) {
             model: ollamaModel,
             messages,
             stream: true,
+            options: {
+                temperature: 0.3,
+                top_p: 0.85,
+                repeat_penalty: 1.1,
+            },
         });
 
         let fullText = '';

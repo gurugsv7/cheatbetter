@@ -358,6 +358,7 @@ export class CustomizeView extends LitElement {
     async handleAudioModeSelect(e) {
         this.audioMode = e.target.value;
         await cheatingDaddy.storage.updatePreference('audioMode', this.audioMode);
+        await cheatingDaddy.refreshPreferencesCache();
         this.requestUpdate();
     }
 
@@ -578,6 +579,7 @@ export class CustomizeView extends LitElement {
                             <option value="speaker_only">Speaker Only (Interviewer)</option>
                             <option value="mic_only">Microphone Only (Me)</option>
                             <option value="both">Both Speaker and Microphone</option>
+                            <option value="none">No Audio (Screenshots Only)</option>
                         </select>
                     </div>
                     ${this.audioMode !== 'speaker_only' ? html`

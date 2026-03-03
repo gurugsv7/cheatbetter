@@ -1,5 +1,6 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { MainView } from '../views/MainView.js';
+import { ResizeHandles } from './ResizeHandles.js';
 import { CustomizeView } from '../views/CustomizeView.js';
 import { HelpView } from '../views/HelpView.js';
 import { HistoryView } from '../views/HistoryView.js';
@@ -889,6 +890,7 @@ export class CheatingDaddyApp extends LitElement {
                     ${isLive ? this.renderLiveBar() : ''}
                     <div class="content-inner ${isLive ? 'live' : ''}">
                         ${this.renderCurrentView()}
+                        <resize-handles></resize-handles>
                     </div>
                 </div>
             </div>

@@ -8,12 +8,15 @@ const CONFIG_VERSION = 1;
 const DEFAULT_CONFIG = {
     configVersion: CONFIG_VERSION,
     onboarded: false,
-    layout: 'normal'
+    layout: 'normal',
 };
 
 const DEFAULT_CREDENTIALS = {
     apiKey: '',
-    groqApiKey: ''
+    groqApiKey: '',
+    azureApiKey: '',
+    azureEndpoint: '',
+    azureDeployment: '',
 };
 
 const DEFAULT_PREFERENCES = {
@@ -35,7 +38,7 @@ const DEFAULT_PREFERENCES = {
 const DEFAULT_KEYBINDS = null; // null means use system defaults
 
 const DEFAULT_LIMITS = {
-    data: [] // Array of { date: 'YYYY-MM-DD', flash: { count }, flashLite: { count }, groq: { 'qwen3-32b': { chars, limit }, 'gpt-oss-120b': { chars, limit }, 'gpt-oss-20b': { chars, limit } }, gemini: { 'gemma-3-27b-it': { chars } } }
+    data: [], // Array of { date: 'YYYY-MM-DD', flash: { count }, flashLite: { count }, groq: { 'qwen3-32b': { chars, limit }, 'gpt-oss-120b': { chars, limit }, 'gpt-oss-20b': { chars, limit } }, gemini: { 'gemma-3-27b-it': { chars } } }
 };
 
 // Get the config directory path based on OS
@@ -204,6 +207,30 @@ function setGroqApiKey(groqApiKey) {
     return setCredentials({ groqApiKey });
 }
 
+function getAzureApiKey() {
+    return getCredentials().azureApiKey || '';
+}
+
+function setAzureApiKey(azureApiKey) {
+    return setCredentials({ azureApiKey });
+}
+
+function getAzureEndpoint() {
+    return getCredentials().azureEndpoint || '';
+}
+
+function setAzureEndpoint(azureEndpoint) {
+    return setCredentials({ azureEndpoint });
+}
+
+function getAzureDeployment() {
+    return getCredentials().azureDeployment || '';
+}
+
+function setAzureDeployment(azureDeployment) {
+    return setCredentials({ azureDeployment });
+}
+
 // ============ PREFERENCES ============
 
 function getPreferences() {
@@ -257,17 +284,17 @@ function getTodayLimits() {
 
     if (todayEntry) {
         // ensure new fields exist
-        if(!todayEntry.groq) {
+        if (!todayEntry.groq) {
             todayEntry.groq = {
                 'qwen3-32b': { chars: 0, limit: 1500000 },
                 'gpt-oss-120b': { chars: 0, limit: 600000 },
                 'gpt-oss-20b': { chars: 0, limit: 600000 },
-                'kimi-k2-instruct': { chars: 0, limit: 600000 }
+                'kimi-k2-instruct': { chars: 0, limit: 600000 },
             };
         }
-        if(!todayEntry.gemini) {
+        if (!todayEntry.gemini) {
             todayEntry.gemini = {
-                'gemma-3-27b-it': { chars: 0 }
+                'gemma-3-27b-it': { chars: 0 },
             };
         }
         setLimits(limits);
@@ -284,11 +311,11 @@ function getTodayLimits() {
             'qwen3-32b': { chars: 0, limit: 1500000 },
             'gpt-oss-120b': { chars: 0, limit: 600000 },
             'gpt-oss-20b': { chars: 0, limit: 600000 },
-            'kimi-k2-instruct': { chars: 0, limit: 600000 }
+            'kimi-k2-instruct': { chars: 0, limit: 600000 },
         },
         gemini: {
-            'gemma-3-27b-it': { chars: 0 }
-        }
+            'gemma-3-27b-it': { chars: 0 },
+        },
     };
     limits.data.push(newEntry);
     setLimits(limits);
@@ -309,7 +336,7 @@ function incrementLimitCount(model) {
         todayEntry = {
             date: today,
             flash: { count: 0 },
-            flashLite: { count: 0 }
+            flashLite: { count: 0 },
         };
         limits.data.push(todayEntry);
     } else {
@@ -335,7 +362,7 @@ function incrementCharUsage(provider, model, charCount) {
     const today = getTodayDateString();
     const todayEntry = limits.data.find(entry => entry.date === today);
 
-    if(todayEntry[provider] && todayEntry[provider][model]) {
+    if (todayEntry[provider] && todayEntry[provider][model]) {
         todayEntry[provider][model].chars += charCount;
         setLimits(limits);
     }
@@ -399,7 +426,7 @@ function saveSession(sessionId, data) {
         customPrompt: data.customPrompt || existingSession?.customPrompt || null,
         // Conversation data
         conversationHistory: data.conversationHistory || existingSession?.conversationHistory || [],
-        screenAnalysisHistory: data.screenAnalysisHistory || existingSession?.screenAnalysisHistory || []
+        screenAnalysisHistory: data.screenAnalysisHistory || existingSession?.screenAnalysisHistory || [],
     };
     return writeJsonFile(sessionPath, sessionData);
 }
@@ -416,7 +443,8 @@ function getAllSessions() {
             return [];
         }
 
-        const files = fs.readdirSync(historyDir)
+        const files = fs
+            .readdirSync(historyDir)
             .filter(f => f.endsWith('.json'))
             .sort((a, b) => {
                 // Sort by timestamp descending (newest first)
@@ -425,22 +453,24 @@ function getAllSessions() {
                 return tsB - tsA;
             });
 
-        return files.map(file => {
-            const sessionId = file.replace('.json', '');
-            const data = readJsonFile(path.join(historyDir, file), null);
-            if (data) {
-                return {
-                    sessionId,
-                    createdAt: data.createdAt,
-                    lastUpdated: data.lastUpdated,
-                    messageCount: data.conversationHistory?.length || 0,
-                    screenAnalysisCount: data.screenAnalysisHistory?.length || 0,
-                    profile: data.profile || null,
-                    customPrompt: data.customPrompt || null
-                };
-            }
-            return null;
-        }).filter(Boolean);
+        return files
+            .map(file => {
+                const sessionId = file.replace('.json', '');
+                const data = readJsonFile(path.join(historyDir, file), null);
+                if (data) {
+                    return {
+                        sessionId,
+                        createdAt: data.createdAt,
+                        lastUpdated: data.lastUpdated,
+                        messageCount: data.conversationHistory?.length || 0,
+                        screenAnalysisCount: data.screenAnalysisHistory?.length || 0,
+                        profile: data.profile || null,
+                        customPrompt: data.customPrompt || null,
+                    };
+                }
+                return null;
+            })
+            .filter(Boolean);
     } catch (error) {
         console.error('Error reading sessions:', error.message);
         return [];
@@ -500,6 +530,12 @@ module.exports = {
     setApiKey,
     getGroqApiKey,
     setGroqApiKey,
+    getAzureApiKey,
+    setAzureApiKey,
+    getAzureEndpoint,
+    setAzureEndpoint,
+    getAzureDeployment,
+    setAzureDeployment,
 
     // Preferences
     getPreferences,
@@ -527,5 +563,5 @@ module.exports = {
     deleteAllSessions,
 
     // Clear all
-    clearAllData
+    clearAllData,
 };
