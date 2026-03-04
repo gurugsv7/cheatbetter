@@ -38,6 +38,7 @@ let currentProfile = null;
 let currentCustomPrompt = null;
 let isInitializingSession = false;
 let currentSystemPrompt = null;
+let currentVoiceProfile = null;
 
 function formatSpeakerResults(results) {
     let text = '';
@@ -374,6 +375,17 @@ async function sendToAzure(transcription) {
 
     console.log(`Sending to Azure OpenAI (${azureDeployment}):`, transcription.substring(0, 100) + '...');
 
+    // Push the current user message BEFORE copying history so it's included
+    // in the request (mirrors the Groq path).
+    groqConversationHistory.push({
+        role: 'user',
+        content: transcription.trim(),
+    });
+
+    if (groqConversationHistory.length > 20) {
+        groqConversationHistory = groqConversationHistory.slice(-20);
+    }
+
     // Add screen context to conversation if there's recent screen analysis
     let messagesWithContext = [...groqConversationHistory];
     if (screenAnalysisHistory.length > 0) {
@@ -385,15 +397,6 @@ async function sendToAzure(transcription) {
                 content: `[From screen analysis] ${lastScreenAnalysis.response}`,
             });
         }
-    }
-
-    groqConversationHistory.push({
-        role: 'user',
-        content: transcription.trim(),
-    });
-
-    if (groqConversationHistory.length > 20) {
-        groqConversationHistory = groqConversationHistory.slice(-20);
     }
 
     try {
@@ -699,7 +702,10 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
     const enabledTools = await getEnabledTools();
     const googleSearchEnabled = enabledTools.some(tool => tool.googleSearch);
 
-    const systemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled);
+    // Load voice profile from storage for style adaptation
+    const { getVoiceProfile } = require('../storage');
+    currentVoiceProfile = getVoiceProfile();
+    const systemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled, currentVoiceProfile);
     currentSystemPrompt = systemPrompt; // Store for Groq
 
     // Initialize new conversation session only on first connect
@@ -1251,12 +1257,26 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         if (!text || typeof text !== 'string' || text.trim().length === 0) {
             return { success: false, error: 'Invalid text message' };
         }
-    
-        // If profile is provided and differs from currentProfile, update session
-        if (profile && profile !== currentProfile) {
-            initializeNewSession(profile);
+
+        // Resolve the active profile — prefer the passed-in profile, then
+        // fall back to the current session profile, then to 'exam' for typed
+        // input (a better default than 'interview' which asks for context).
+        const resolvedProfile = profile || currentProfile || 'exam';
+
+        // Capture whether profile changed BEFORE initializeNewSession mutates currentProfile.
+        const profileChanged = resolvedProfile !== currentProfile;
+
+        if (profileChanged) {
+            initializeNewSession(resolvedProfile, currentCustomPrompt);
         }
-    
+
+        // Always keep currentSystemPrompt in sync with the resolved profile
+        // so Groq / Azure / Gemma use the right instructions.
+        if (!currentSystemPrompt || profileChanged) {
+            const googleSearchEnabled = true; // conservative default for text queries
+            currentSystemPrompt = getSystemPrompt(resolvedProfile, currentCustomPrompt || '', googleSearchEnabled, currentVoiceProfile);
+        }
+
         if (currentProviderMode === 'cloud') {
             try {
                 console.log('Sending text to cloud:', text);
@@ -1267,30 +1287,46 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: false, error: error.message };
             }
         }
-    
+
         if (currentProviderMode === 'local') {
             try {
-                console.log('Sending text to local Ollama:', text);
-                return await getLocalAi().sendLocalText(text.trim());
+                console.log('Sending text to local Ollama:', text, '| profile:', resolvedProfile);
+                // Pass the resolved system prompt so Ollama uses the correct profile
+                // even if the session was initialized with a different one.
+                return await getLocalAi().sendLocalText(text.trim(), currentSystemPrompt);
             } catch (error) {
                 console.error('Error sending local text:', error);
                 return { success: false, error: error.message };
             }
         }
-    
-        if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
-    
+
+        // --- BYOK mode ---
+        // Groq / Azure / Gemma can answer typed questions without a live
+        // Gemini session.  Only forward to the live session when none of the
+        // richer providers are configured.
         try {
-            console.log('Sending text message:', text);
-    
+            console.log('Sending text message via BYOK:', text, '| profile:', resolvedProfile);
+
             if (hasAzureKey()) {
                 sendToAzure(text.trim());
-            } else if (hasGroqKey()) {
-                sendToGroq(text.trim());
-            } else {
-                sendToGemma(text.trim());
+                return { success: true };
             }
-    
+
+            if (hasGroqKey()) {
+                sendToGroq(text.trim());
+                return { success: true };
+            }
+
+            // Gemma (Gemini HTTP) — works without a live session
+            if (getApiKey()) {
+                sendToGemma(text.trim());
+                return { success: true };
+            }
+
+            // Last resort: try the live Gemini session
+            if (!geminiSessionRef.current) {
+                return { success: false, error: 'No active session. Please press Start or configure an API key.' };
+            }
             await geminiSessionRef.current.sendRealtimeInput({ text: text.trim() });
             return { success: true };
         } catch (error) {

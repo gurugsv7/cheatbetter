@@ -6,6 +6,7 @@ export class AssistantView extends LitElement {
             height: 100%;
             display: flex;
             flex-direction: column;
+            position: relative;
         }
 
         * {
@@ -49,9 +50,10 @@ export class AssistantView extends LitElement {
         .response-container h4,
         .response-container h5,
         .response-container h6 {
-            margin: 1em 0 0.5em 0;
-            color: var(--text-primary);
+            margin: 1.1em 0 0.4em 0;
+            color: #e2e8f0;
             font-weight: var(--font-weight-semibold);
+            letter-spacing: -0.01em;
         }
 
         .response-container h1 { font-size: 1.5em; }
@@ -79,32 +81,112 @@ export class AssistantView extends LitElement {
 
         .response-container blockquote {
             margin: 0.8em 0;
-            padding: 0.5em 1em;
-            border-left: 2px solid var(--border-strong);
-            background: var(--bg-surface);
-            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            padding: 0.6em 1em;
+            border-left: 3px solid var(--accent);
+            background: rgba(59, 130, 246, 0.06);
+            border-radius: 0 var(--radius-md) var(--radius-md) 0;
+            color: var(--text-secondary);
         }
 
         .response-container code {
-            background: var(--bg-elevated);
+            background: rgba(59, 130, 246, 0.1);
+            color: #93c5fd;
             padding: 0.15em 0.4em;
             border-radius: var(--radius-sm);
             font-family: var(--font-mono);
             font-size: 0.85em;
+            border: 1px solid rgba(59, 130, 246, 0.15);
         }
 
+        /* ── Terminal-style code blocks ── */
+
         .response-container pre {
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
+            margin: 1em 0;
             border-radius: var(--radius-md);
-            padding: var(--space-md);
-            overflow-x: auto;
-            margin: 0.8em 0;
+            overflow: hidden;
+            border: 1px solid #2a2a2a;
+            background: #0d1117;
         }
 
         .response-container pre code {
             background: none;
+            color: #e6edf3;
             padding: 0;
+            border: none;
+            font-size: 0.82em;
+            border-radius: 0;
+        }
+
+        .code-block-wrapper {
+            margin: 1em 0;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            border: 1px solid #2a2a2a;
+            background: #0d1117;
+        }
+
+        .code-block-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 14px;
+            background: #161b22;
+            border-bottom: 1px solid #2a2a2a;
+            user-select: none;
+        }
+
+        .code-block-lang {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: #7d8590;
+            letter-spacing: 0.04em;
+            text-transform: lowercase;
+        }
+
+        .code-block-copy {
+            background: none;
+            border: 1px solid #30363d;
+            color: #7d8590;
+            cursor: pointer;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            padding: 3px 10px;
+            border-radius: 6px;
+            transition: color 0.15s, border-color 0.15s, background 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .code-block-copy:hover {
+            color: #e6edf3;
+            border-color: #6e7681;
+            background: #21262d;
+        }
+
+        .code-block-copy.copied {
+            color: #3fb950;
+            border-color: #3fb950;
+        }
+
+        .code-block-wrapper pre {
+            margin: 0;
+            border: none;
+            border-radius: 0;
+            padding: 14px 16px;
+            overflow-x: auto;
+            background: #0d1117;
+        }
+
+        .code-block-wrapper pre code {
+            background: none;
+            color: #e6edf3;
+            padding: 0;
+            border: none;
+            font-family: var(--font-mono);
+            font-size: 0.82em;
+            line-height: 1.6;
+            border-radius: 0;
         }
 
         .response-container a {
@@ -116,6 +198,7 @@ export class AssistantView extends LitElement {
         .response-container strong,
         .response-container b {
             font-weight: var(--font-weight-semibold);
+            color: #f1f5f9;
         }
 
         .response-container hr {
@@ -298,6 +381,109 @@ export class AssistantView extends LitElement {
             height: calc(100% + 2px);
             pointer-events: none;
         }
+
+        /* ── Error slide panel ── */
+
+        .error-panel {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 280px;
+            height: 100%;
+            background: #0f1923;
+            border-left: 2px solid var(--danger);
+            transform: translateX(100%);
+            transition: transform 300ms ease;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -4px 0 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .error-panel.open {
+            transform: translateX(0);
+        }
+
+        .error-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: rgba(239, 68, 68, 0.12);
+            border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+            user-select: none;
+            flex-shrink: 0;
+        }
+
+        .error-panel-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #f87171;
+            font-family: var(--font-mono);
+        }
+
+        .error-panel-title svg {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+        }
+
+        .error-panel-close {
+            background: none;
+            border: none;
+            color: #7d8590;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            transition: color 0.15s, background 0.15s;
+        }
+
+        .error-panel-close:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .error-panel-close svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .error-panel-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px 14px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #e6edf3;
+            font-family: var(--font);
+        }
+
+        .error-panel-body p {
+            margin: 0.5em 0;
+        }
+
+        .error-panel-body code {
+            background: rgba(239, 68, 68, 0.1);
+            color: #fca5a5;
+            padding: 0.1em 0.35em;
+            border-radius: 3px;
+            font-family: var(--font-mono);
+            font-size: 0.88em;
+        }
+
+        .error-panel-body::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .error-panel-body::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 2px;
+        }
     `;
 
     static properties = {
@@ -307,6 +493,8 @@ export class AssistantView extends LitElement {
         onSendText: { type: Function },
         shouldAnimateResponse: { type: Boolean },
         isAnalyzing: { type: Boolean, state: true },
+        errorContent: { type: String },
+        _errorPanelOpen: { type: Boolean, state: true },
     };
 
     constructor() {
@@ -317,6 +505,8 @@ export class AssistantView extends LitElement {
         this.onSendText = () => {};
         this.isAnalyzing = false;
         this._animFrame = null;
+        this.errorContent = '';
+        this._errorPanelOpen = false;
     }
 
     getProfileNames() {
@@ -476,6 +666,7 @@ export class AssistantView extends LitElement {
         if (window.captureManualScreenshot) {
             this.isAnalyzing = true;
             this._responseCountWhenStarted = this.responses.length;
+            this.dispatchEvent(new CustomEvent('screen-analysis-triggered', { bubbles: true, composed: true }));
             window.captureManualScreenshot();
         }
     }
@@ -650,18 +841,108 @@ export class AssistantView extends LitElement {
                 this.isAnalyzing = false;
             }
         }
+
+        if (changedProperties.has('errorContent') && this.errorContent) {
+            this._errorPanelOpen = true;
+        }
     }
 
     updateResponseContent() {
         const container = this.shadowRoot.querySelector('#responseContainer');
         if (container) {
             const currentResponse = this.getCurrentResponse();
-            const renderedResponse = this.renderMarkdown(currentResponse);
-            container.innerHTML = renderedResponse;
+            container.innerHTML = this.renderMarkdown(currentResponse);
+            this._postProcessCodeBlocks(container);
             if (this.shouldAnimateResponse) {
                 this.dispatchEvent(new CustomEvent('response-animation-complete', { bubbles: true, composed: true }));
             }
         }
+    }
+
+    _dismissErrorPanel() {
+        this._errorPanelOpen = false;
+        this.dispatchEvent(new CustomEvent('dismiss-error-panel', { bubbles: true, composed: true }));
+    }
+
+    _renderErrorPanel() {
+        const renderedError = this.errorContent ? this.renderMarkdown(this.errorContent) : '';
+        return html`
+            <div class="error-panel ${this._errorPanelOpen ? 'open' : ''}">
+                <div class="error-panel-header">
+                    <span class="error-panel-title">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        Code Issue
+                    </span>
+                    <button class="error-panel-close" @click=${() => this._dismissErrorPanel()} title="Dismiss">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"/>
+                            <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="error-panel-body" .innerHTML=${renderedError}></div>
+            </div>
+        `;
+    }
+
+    _postProcessCodeBlocks(container) {
+        const preBlocks = container.querySelectorAll('pre');
+        preBlocks.forEach((pre) => {
+            if (pre.closest('.code-block-wrapper')) return; // already processed
+
+            const code = pre.querySelector('code');
+
+            // Detect language from class e.g. "language-python"
+            let lang = '';
+            if (code) {
+                const match = [...code.classList].find(c => c.startsWith('language-'));
+                if (match) lang = match.replace('language-', '');
+            }
+
+            // Apply highlight.js if available
+            if (code && window.hljs && lang) {
+                try { window.hljs.highlightElement(code); } catch(e) {}
+            } else if (code && window.hljs && !lang) {
+                try { window.hljs.highlightElement(code); } catch(e) {}
+            }
+
+            // Build wrapper
+            const wrapper = document.createElement('div');
+            wrapper.className = 'code-block-wrapper';
+
+            const header = document.createElement('div');
+            header.className = 'code-block-header';
+
+            const langLabel = document.createElement('span');
+            langLabel.className = 'code-block-lang';
+            langLabel.textContent = lang || 'code';
+
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'code-block-copy';
+            copyBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>copy`;
+            copyBtn.addEventListener('click', () => {
+                const text = code ? code.innerText : pre.innerText;
+                navigator.clipboard.writeText(text).then(() => {
+                    copyBtn.textContent = 'copied!';
+                    copyBtn.classList.add('copied');
+                    setTimeout(() => {
+                        copyBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>copy`;
+                        copyBtn.classList.remove('copied');
+                    }, 2000);
+                }).catch(() => {});
+            });
+
+            header.appendChild(langLabel);
+            header.appendChild(copyBtn);
+
+            pre.parentNode.insertBefore(wrapper, pre);
+            wrapper.appendChild(header);
+            wrapper.appendChild(pre);
+        });
     }
 
     render() {
@@ -669,6 +950,8 @@ export class AssistantView extends LitElement {
 
         return html`
             <div class="response-container" id="responseContainer"></div>
+
+            ${this._renderErrorPanel()}
 
             ${hasMultipleResponses ? html`
                 <div class="response-nav">

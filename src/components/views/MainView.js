@@ -495,6 +495,71 @@ export class MainView extends LitElement {
             color: var(--warning);
             line-height: var(--line-height);
         }
+
+        /* ── Voice Profile Card ── */
+
+        .voice-profile-card {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            background: rgba(34, 197, 94, 0.06);
+        }
+
+        .voice-profile-card.empty {
+            border-color: var(--border);
+            background: var(--bg-elevated);
+        }
+
+        .voice-profile-icon {
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .voice-profile-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .voice-profile-title {
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-medium);
+            color: var(--text-primary);
+        }
+
+        .voice-profile-desc {
+            font-size: var(--font-size-xs);
+            color: var(--text-muted);
+        }
+
+        .voice-profile-actions {
+            display: flex;
+            gap: var(--space-xs);
+            flex-shrink: 0;
+        }
+
+        .voice-profile-btn {
+            font-size: var(--font-size-xs);
+            color: var(--accent);
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 2px 6px;
+            border-radius: var(--radius-sm);
+            transition: background var(--transition);
+        }
+
+        .voice-profile-btn:hover {
+            background: var(--bg-hover);
+        }
+
+        .voice-profile-btn.danger {
+            color: var(--danger, #ef4444);
+        }
     `;
 
     static properties = {
@@ -504,6 +569,9 @@ export class MainView extends LitElement {
         onProfileChange: { type: Function },
         isInitializing: { type: Boolean },
         whisperDownloading: { type: Boolean },
+        hasVoiceProfile: { type: Boolean },
+        onResetVoiceProfile: { type: Function },
+        onRecalibrate: { type: Function },
         // Internal state
         _mode: { state: true },
         _token: { state: true },
@@ -531,6 +599,9 @@ export class MainView extends LitElement {
         this.onProfileChange = () => {};
         this.isInitializing = false;
         this.whisperDownloading = false;
+        this.hasVoiceProfile = false;
+        this.onResetVoiceProfile = () => {};
+        this.onRecalibrate = () => {};
 
         this._mode = 'cloud';
         this._token = '';
@@ -1115,6 +1186,31 @@ export class MainView extends LitElement {
                           ? 'Bring your own API keys'
                           : 'Run models locally on your machine'}
                 </div>
+
+                <!-- Voice Profile Status -->
+                ${this.hasVoiceProfile
+                    ? html`
+                        <div class="voice-profile-card">
+                            <span class="voice-profile-icon">&#10003;</span>
+                            <div class="voice-profile-info">
+                                <span class="voice-profile-title">Voice trained</span>
+                                <span class="voice-profile-desc">AI answers will match your speaking style</span>
+                            </div>
+                            <div class="voice-profile-actions">
+                                <button class="voice-profile-btn" @click=${() => this.onRecalibrate()}>Retrain</button>
+                                <button class="voice-profile-btn danger" @click=${() => this.onResetVoiceProfile()}>Reset</button>
+                            </div>
+                        </div>
+                    `
+                    : html`
+                        <div class="voice-profile-card empty">
+                            <span class="voice-profile-icon">&#9673;</span>
+                            <div class="voice-profile-info">
+                                <span class="voice-profile-title">Voice not trained</span>
+                                <span class="voice-profile-desc">AI will train your voice style when you start</span>
+                            </div>
+                        </div>
+                    `}
 
                 ${this._mode === 'cloud' ? this._renderCloudMode() : ''} ${this._mode === 'byok' ? this._renderByokMode() : ''}
                 ${this._mode === 'local' ? (this._showLocalHelp ? this._renderLocalHelp() : this._renderLocalMode()) : ''}

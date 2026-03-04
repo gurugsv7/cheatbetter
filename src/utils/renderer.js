@@ -125,6 +125,18 @@ const storage = {
         return ipcRenderer.invoke('storage:clear-all');
     },
 
+    // Voice profile
+    async getVoiceProfile() {
+        const result = await ipcRenderer.invoke('storage:get-voice-profile');
+        return result.success ? result.data : null;
+    },
+    async saveVoiceProfile(profile) {
+        return ipcRenderer.invoke('storage:save-voice-profile', profile);
+    },
+    async deleteVoiceProfile() {
+        return ipcRenderer.invoke('storage:delete-voice-profile');
+    },
+
     // Limits
     async getTodayLimits() {
         const result = await ipcRenderer.invoke('storage:get-today-limits');
@@ -589,16 +601,30 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 
 const MANUAL_SCREENSHOT_PROMPT = `Extract ALL visible questions and their corresponding answers from the screenshot, including any text shown in paused videos or images.
 
+**IMPORTANT — NO INTERVIEWER IS PRESENT:** This is a silent screen analysis. The user is NOT speaking to anyone right now. Go CODE-FIRST: provide working, complete code immediately with NO introductory sentences, NO "Sure!", NO "Here's the code:", NO preamble whatsoever. Just the answer or code block directly.
+
 Format:
 - For each question, output the question text followed by its answer on a new line.
 - MCQ: "Q1: [question]" then "A: [answer]"
 - Math: "Q: [question]" then "A: [final answer]"
-- Code: "Q: [question]" then "A: [working code]"
+- Code: "Q: [question]" then "A: [working code — no preamble, start with the code block]"
 - Text: "Q: [question]" then "A: [1-2 sentence answer]"
 
 If multiple questions are visible, extract and answer each. Do not skip any visible question. If a question is partially visible, extract as much as possible.
 
-NO explanations, NO reasoning, NO "the answer is". Only the extracted questions and their direct answers.`;
+NO introductions, NO "Certainly!", NO "Here is...", NO reasoning preamble, NO "the answer is". Only the extracted questions and their direct answers.
+
+ADDITIONAL TASKS (append these at the very end of your response, each on its own line):
+
+1. LAYOUT DETECTION: Analyze where the code editor, input area, or answer entry zone is positioned on screen. On its own line at the end, output exactly:
+===LAYOUT:position===
+where position is one of: left, right, center, top-left, top-right, bottom-left, bottom-right. This describes where the user's INPUT/CODE area is.
+
+2. CODE ISSUE DETECTION: If you notice any bug, error, wrong logic, syntax issue, or mistake in code visible on screen, append:
+===CODE_ISSUE_START===
+[2-3 sentence description of the issue and the fix]
+===CODE_ISSUE_END===
+If no code issues are found, do NOT include the CODE_ISSUE markers at all.`;
 
 async function captureManualScreenshot(imageQuality = null) {
     console.log('Manual screenshot triggered');
@@ -757,10 +783,16 @@ async function sendTextMessage(text) {
         return { success: false, error: 'Empty message' };
     }
 
-    // Detect MCQ/exam question and set profile accordingly
+    // Route typed messages to the correct profile.
+    // Typed input is almost always a direct question to the AI, not interview audio
+    // transcription — so default to 'exam' (general tutor) rather than 'interview'.
     let profile = window.cheatingDaddy?.element()?.selectedProfile || 'interview';
-    const mcqPattern = /(base|following|choose|correct|option|number|system|color|capital|solve|math|answer|\d+\s*[\)\.]|A\)|B\)|C\)|D\))/i;
-    if (mcqPattern.test(text)) {
+
+    const codingPattern = /(code|function|algorithm|script|program|implement|debug|error|bug|fix|class|object|array|loop|recursion|sql|query|api|regex|json|html|css|javascript|python|java|typescript|react|node|express|django|flask|spring|bash|shell|git|docker|kubernetes|linux|terminal|database|http|async|promise|callback|lambda|deploy|build|compile|sort|search|binary|tree|graph|linked list|stack|queue|heap|hash|dynamic programming)/i;
+    const directQuestionPattern = /^(give me|write|create|generate|show me|explain|what is|what are|how (do|does|can|to)|why (is|does|do|did)|when (is|was)|where (is|does)|who (is|are)|define|describe|list|compare|difference between|help me|can you|could you|i need|make me|build|design|calculate|solve|find|tell me|summarize)/i;
+    const mcqPattern = /(following|choose|correct answer|option [abcd]|\d+\s*[\)\.]|A\)|B\)|C\)|D\)|which of the|select the|mark the)/i;
+
+    if (mcqPattern.test(text) || codingPattern.test(text) || directQuestionPattern.test(text)) {
         profile = 'exam';
     }
 
@@ -1141,6 +1173,7 @@ const cheatingDaddy = {
     stopCapture,
     sendTextMessage,
     handleShortcut,
+    repositionWindow: async (hint) => ipcRenderer.invoke('reposition-window', hint),
 
     // Storage API
     storage,

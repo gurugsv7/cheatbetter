@@ -278,7 +278,10 @@ async function initializeLocalSession(ollamaHost, model, whisperModel, profile, 
 
     try {
         // Setup system prompt
-        currentSystemPrompt = getSystemPrompt(profile, customPrompt, false);
+        // Load voice profile for style adaptation
+        const { getVoiceProfile } = require('../storage');
+        const voiceProfile = getVoiceProfile();
+        currentSystemPrompt = getSystemPrompt(profile, customPrompt, false, voiceProfile);
 
         // Initialize Ollama client
         ollamaClient = new Ollama({ host: ollamaHost });
@@ -358,16 +361,24 @@ function isLocalSessionActive() {
 
 // ── Send text directly to Ollama (for manual text input) ──
 
-async function sendLocalText(text) {
+async function sendLocalText(text, overrideSystemPrompt) {
     if (!isLocalActive || !ollamaClient) {
         return { success: false, error: 'No active local session' };
     }
+
+    // Allow the caller to supply a per-message system prompt (e.g. when the
+    // renderer detects a coding / exam question in interview-mode sessions).
+    const prevSystemPrompt = currentSystemPrompt;
+    if (overrideSystemPrompt) currentSystemPrompt = overrideSystemPrompt;
 
     try {
         await sendToOllama(text);
         return { success: true };
     } catch (error) {
         return { success: false, error: error.message };
+    } finally {
+        // Restore so the session-level prompt is not permanently overridden.
+        currentSystemPrompt = prevSystemPrompt;
     }
 }
 

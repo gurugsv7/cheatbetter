@@ -82,6 +82,10 @@ function getHistoryDir() {
     return path.join(getConfigDir(), 'history');
 }
 
+function getVoiceProfilePath() {
+    return path.join(getConfigDir(), 'voice-profile.json');
+}
+
 // Helper to read JSON file safely
 function readJsonFile(filePath, defaultValue) {
     try {
@@ -506,6 +510,29 @@ function deleteAllSessions() {
     }
 }
 
+// ============ VOICE PROFILE ============
+
+function getVoiceProfile() {
+    return readJsonFile(getVoiceProfilePath(), null);
+}
+
+function saveVoiceProfile(profile) {
+    return writeJsonFile(getVoiceProfilePath(), profile);
+}
+
+function deleteVoiceProfile() {
+    try {
+        const profilePath = getVoiceProfilePath();
+        if (fs.existsSync(profilePath)) {
+            fs.unlinkSync(profilePath);
+        }
+        return true;
+    } catch (error) {
+        console.error('Error deleting voice profile:', error.message);
+        return false;
+    }
+}
+
 // ============ CLEAR ALL DATA ============
 
 function clearAllData() {
@@ -561,6 +588,11 @@ module.exports = {
     getAllSessions,
     deleteSession,
     deleteAllSessions,
+
+    // Voice profile
+    getVoiceProfile,
+    saveVoiceProfile,
+    deleteVoiceProfile,
 
     // Clear all
     clearAllData,

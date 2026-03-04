@@ -8,6 +8,7 @@ import { AssistantView } from '../views/AssistantView.js';
 import { OnboardingView } from '../views/OnboardingView.js';
 import { AICustomizeView } from '../views/AICustomizeView.js';
 import { FeedbackView } from '../views/FeedbackView.js';
+import { CalibrationView } from '../views/CalibrationView.js';
 
 export class CheatingDaddyApp extends LitElement {
     static styles = css`
@@ -364,6 +365,9 @@ export class CheatingDaddyApp extends LitElement {
         _storageLoaded: { state: true },
         _updateAvailable: { state: true },
         _whisperDownloading: { state: true },
+        _awaitingScreenAnalysis: { state: true },
+        _errorContent: { state: true },
+        _hasVoiceProfile: { state: true },
     };
 
     constructor() {
@@ -390,6 +394,10 @@ export class CheatingDaddyApp extends LitElement {
         this._updateAvailable = false;
         this._whisperDownloading = false;
         this._localVersion = '';
+        this._awaitingScreenAnalysis = false;
+        this._errorContent = '';
+        this._hasVoiceProfile = false;
+        this._layoutRepositioned = false;
 
         this._loadFromStorage();
         this._checkForUpdates();
@@ -420,9 +428,10 @@ export class CheatingDaddyApp extends LitElement {
 
     async _loadFromStorage() {
         try {
-            const [config, prefs] = await Promise.all([
+            const [config, prefs, voiceProfile] = await Promise.all([
                 cheatingDaddy.storage.getConfig(),
-                cheatingDaddy.storage.getPreferences()
+                cheatingDaddy.storage.getPreferences(),
+                cheatingDaddy.storage.getVoiceProfile(),
             ]);
 
             this.currentView = config.onboarded ? 'main' : 'onboarding';
@@ -431,6 +440,7 @@ export class CheatingDaddyApp extends LitElement {
             this.selectedScreenshotInterval = prefs.selectedScreenshotInterval || '5';
             this.selectedImageQuality = prefs.selectedImageQuality || 'medium';
             this.layoutMode = config.layout || 'normal';
+            this._hasVoiceProfile = !!voiceProfile;
 
             this._storageLoaded = true;
             this.requestUpdate();
@@ -452,6 +462,10 @@ export class CheatingDaddyApp extends LitElement {
             ipcRenderer.on('click-through-toggled', (_, isEnabled) => { this._isClickThrough = isEnabled; });
             ipcRenderer.on('reconnect-failed', (_, data) => this.addNewResponse(data.message));
             ipcRenderer.on('whisper-downloading', (_, downloading) => { this._whisperDownloading = downloading; });
+            ipcRenderer.on('screen-analysis-triggered', () => {
+                this._awaitingScreenAnalysis = true;
+                this._layoutRepositioned = false;
+            });
         }
     }
 
@@ -507,7 +521,8 @@ export class CheatingDaddyApp extends LitElement {
 
     addNewResponse(response) {
         const wasOnLatest = this.currentResponseIndex === this.responses.length - 1;
-        this.responses = [...this.responses, response];
+        const cleaned = this._extractScreenAnalysisMarkers(response);
+        this.responses = [...this.responses, cleaned];
         if (wasOnLatest || this.currentResponseIndex === -1) {
             this.currentResponseIndex = this.responses.length - 1;
         }
@@ -517,11 +532,43 @@ export class CheatingDaddyApp extends LitElement {
 
     updateCurrentResponse(response) {
         if (this.responses.length > 0) {
-            this.responses = [...this.responses.slice(0, -1), response];
+            const cleaned = this._extractScreenAnalysisMarkers(response);
+            this.responses = [...this.responses.slice(0, -1), cleaned];
         } else {
             this.addNewResponse(response);
         }
         this.requestUpdate();
+    }
+
+    _extractScreenAnalysisMarkers(text) {
+        if (!this._awaitingScreenAnalysis) return text;
+
+        let cleaned = text;
+
+        // Extract layout hint
+        const layoutMatch = cleaned.match(/===LAYOUT:(left|right|center|top-left|top-right|bottom-left|bottom-right)===/i);
+        if (layoutMatch && !this._layoutRepositioned) {
+            this._layoutRepositioned = true;
+            const hint = layoutMatch[1].toLowerCase();
+            if (window.cheatingDaddy?.repositionWindow) {
+                window.cheatingDaddy.repositionWindow(hint);
+            }
+        }
+        cleaned = cleaned.replace(/\n?===LAYOUT:[a-z-]+===\n?/gi, '');
+
+        // Extract code issue
+        const issueMatch = cleaned.match(/===CODE_ISSUE_START===\n?([\s\S]*?)\n?===CODE_ISSUE_END===/i);
+        if (issueMatch) {
+            this._errorContent = issueMatch[1].trim();
+        }
+        cleaned = cleaned.replace(/\n?===CODE_ISSUE_START===\n?[\s\S]*?\n?===CODE_ISSUE_END===\n?/gi, '');
+
+        // Once status goes to Listening/Ready, analysis is done
+        if (this.statusText?.includes('Listening') || this.statusText?.includes('Ready')) {
+            this._awaitingScreenAnalysis = false;
+        }
+
+        return cleaned.trim();
     }
 
     // ── Navigation ──
@@ -540,6 +587,9 @@ export class CheatingDaddyApp extends LitElement {
             }
             this.sessionActive = false;
             this._stopTimer();
+            this.currentView = 'main';
+        } else if (this.currentView === 'calibration') {
+            // Go back to main from calibration
             this.currentView = 'main';
         } else {
             if (window.require) {
@@ -566,6 +616,37 @@ export class CheatingDaddyApp extends LitElement {
     // ── Session start ──
 
     async handleStart() {
+        // If no voice profile, go to calibration first
+        if (!this._hasVoiceProfile) {
+            this.currentView = 'calibration';
+            this.requestUpdate();
+            return;
+        }
+
+        await this._startSession();
+    }
+
+    async handleCalibrationComplete(voiceProfile) {
+        if (voiceProfile) {
+            await cheatingDaddy.storage.saveVoiceProfile(voiceProfile);
+            this._hasVoiceProfile = true;
+        }
+        // Proceed to start session
+        await this._startSession();
+    }
+
+    handleCalibrationSkip() {
+        // Skip calibration, start session without voice profile
+        this._startSession();
+    }
+
+    async handleResetVoiceProfile() {
+        await cheatingDaddy.storage.deleteVoiceProfile();
+        this._hasVoiceProfile = false;
+        this.requestUpdate();
+    }
+
+    async _startSession() {
         const prefs = await cheatingDaddy.storage.getPreferences();
         const providerMode = prefs.providerMode || 'cloud';
 
@@ -730,7 +811,19 @@ export class CheatingDaddyApp extends LitElement {
                         .onStart=${() => this.handleStart()}
                         .onExternalLink=${url => this.handleExternalLinkClick(url)}
                         .whisperDownloading=${this._whisperDownloading}
+                        .hasVoiceProfile=${this._hasVoiceProfile}
+                        .onResetVoiceProfile=${() => this.handleResetVoiceProfile()}
+                        .onRecalibrate=${() => { this.currentView = 'calibration'; this.requestUpdate(); }}
                     ></main-view>
+                `;
+
+            case 'calibration':
+                return html`
+                    <calibration-view
+                        .language=${this.selectedLanguage}
+                        .onComplete=${(profile) => this.handleCalibrationComplete(profile)}
+                        .onSkip=${() => this.handleCalibrationSkip()}
+                    ></calibration-view>
                 `;
 
             case 'ai-customize':
@@ -774,10 +867,20 @@ export class CheatingDaddyApp extends LitElement {
                         .selectedProfile=${this.selectedProfile}
                         .onSendText=${msg => this.handleSendText(msg)}
                         .shouldAnimateResponse=${this.shouldAnimateResponse}
+                        .errorContent=${this._errorContent}
                         @response-index-changed=${this.handleResponseIndexChanged}
                         @response-animation-complete=${() => {
                             this.shouldAnimateResponse = false;
                             this._currentResponseIsComplete = true;
+                            this.requestUpdate();
+                        }}
+                        @screen-analysis-triggered=${() => {
+                            this._awaitingScreenAnalysis = true;
+                            this._layoutRepositioned = false;
+                            this._errorContent = '';
+                        }}
+                        @dismiss-error-panel=${() => {
+                            this._errorContent = '';
                             this.requestUpdate();
                         }}
                     ></assistant-view>

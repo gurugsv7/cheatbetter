@@ -358,6 +358,56 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         // This handler is kept for compatibility but is a no-op now.
         return { success: true };
     });
+
+    // Reposition window to the opposite side of where the user's input area is
+    ipcMain.handle('reposition-window', async (event, hint) => {
+        if (!mainWindow || mainWindow.isDestroyed()) return { success: false };
+
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+        const [winW, winH] = mainWindow.getSize();
+        const margin = 20;
+
+        let x, y;
+
+        switch (hint) {
+            case 'right':
+                // Input on right → window goes left
+                x = margin;
+                y = margin;
+                break;
+            case 'left':
+                // Input on left → window goes right
+                x = screenWidth - winW - margin;
+                y = margin;
+                break;
+            case 'bottom-right':
+                x = margin;
+                y = margin;
+                break;
+            case 'bottom-left':
+                x = screenWidth - winW - margin;
+                y = margin;
+                break;
+            case 'top-right':
+                x = margin;
+                y = screenHeight - winH - margin;
+                break;
+            case 'top-left':
+                x = screenWidth - winW - margin;
+                y = screenHeight - winH - margin;
+                break;
+            case 'center':
+            default:
+                // Default: top-right corner
+                x = screenWidth - winW - margin;
+                y = margin;
+                break;
+        }
+
+        mainWindow.setPosition(Math.max(0, Math.round(x)), Math.max(0, Math.round(y)));
+        return { success: true };
+    });
 }
 
 module.exports = {

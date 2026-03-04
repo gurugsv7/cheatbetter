@@ -304,6 +304,36 @@ function setupStorageIpcHandlers() {
         }
     });
 
+    // ============ VOICE PROFILE ============
+    ipcMain.handle('storage:get-voice-profile', async () => {
+        try {
+            return { success: true, data: storage.getVoiceProfile() };
+        } catch (error) {
+            console.error('Error getting voice profile:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:save-voice-profile', async (event, profile) => {
+        try {
+            storage.saveVoiceProfile(profile);
+            return { success: true };
+        } catch (error) {
+            console.error('Error saving voice profile:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:delete-voice-profile', async () => {
+        try {
+            storage.deleteVoiceProfile();
+            return { success: true };
+        } catch (error) {
+            console.error('Error deleting voice profile:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     // ============ CLEAR ALL ============
     ipcMain.handle('storage:clear-all', async () => {
         try {
