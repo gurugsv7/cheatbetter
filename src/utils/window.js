@@ -5,17 +5,22 @@ const storage = require('../storage');
 let mouseEventsIgnored = false;
 
 function createWindow(sendToRenderer, geminiSessionRef) {
-    // Get layout preference (default to 'normal')
-    let windowWidth = 1100;
-    let windowHeight = 800;
+    // Keep window compact — never more than 60% width / 38% height of the screen
+    const workArea = screen.getPrimaryDisplay().workAreaSize;
+    let windowWidth = Math.min(Math.floor(workArea.width * 0.58), 720);
+    let windowHeight = Math.min(Math.floor(workArea.height * 0.38), 380);
 
     const mainWindow = new BrowserWindow({
         width: windowWidth,
         height: windowHeight,
+        minWidth: 480,
+        minHeight: 300,
+        maxHeight: Math.floor(workArea.height * 0.65),
         frame: false,
         transparent: true,
         hasShadow: false,
         alwaysOnTop: true,
+        maximizable: false,
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false, // TODO: change to true
@@ -59,11 +64,11 @@ function createWindow(sendToRenderer, geminiSessionRef) {
         }
     }
 
-    // Center window at the top of the screen
+    // Center window horizontally, place in upper third vertically
     const primaryDisplay = screen.getPrimaryDisplay();
-    const { width: screenWidth } = primaryDisplay.workAreaSize;
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
     const x = Math.floor((screenWidth - windowWidth) / 2);
-    const y = 0;
+    const y = Math.floor((screenHeight - windowHeight) / 3);
     mainWindow.setPosition(x, y);
 
     if (process.platform === 'win32') {

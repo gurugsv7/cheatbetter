@@ -1,8 +1,8 @@
 {
-    "name": "ashwinbot",
-    "productName": "ashwinbot",
+    "name": "gsv",
+    "productName": "GSV",
     "version": "0.7.0",
-    "description": "ashwinbot",
+    "description": "GSV",
     "main": "src/index.js",
     "scripts": {
         "start": "electron-forge start",
@@ -12,10 +12,10 @@
         "lint": "echo \"No linting configured\""
     },
     "keywords": [
-        "ashwinbot",
-        "ashwinbot ai",
-        "ashwinbot ai assistant",
-        "ashwinbot ai assistant for interviews"
+        "GSV",
+        "GSV ai",
+        "GSV ai assistant",
+        "GSV ai assistant for interviews"
     ],
     "author": {
         "name": "sohzm",
@@ -26,7 +26,9 @@
         "@google/genai": "^1.2.0",
         "@huggingface/transformers": "^3.8.1",
         "electron-squirrel-startup": "^1.0.1",
+        "mammoth": "^1.11.0",
         "ollama": "^0.6.3",
+        "pdf-parse": "^1.1.1",
         "ws": "^8.19.0"
     },
     "devDependencies": {

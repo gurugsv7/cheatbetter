@@ -59,6 +59,21 @@ export class CalibrationView extends LitElement {
     static styles = [
         unifiedPageStyles,
         css`
+            @keyframes cal-grid-pan {
+                0%   { background-position: 0 0; }
+                100% { background-position: 40px 40px; }
+            }
+
+            @keyframes cal-fade-up {
+                from { opacity: 0; transform: translateY(10px); }
+                to   { opacity: 1; transform: translateY(0); }
+            }
+
+            @keyframes cal-ring-pulse {
+                0%,100% { box-shadow: 0 0 0 0 rgba(0,212,255,0.4); }
+                50%     { box-shadow: 0 0 0 10px rgba(0,212,255,0); }
+            }
+
             :host {
                 display: flex;
                 flex-direction: column;
@@ -74,27 +89,51 @@ export class CalibrationView extends LitElement {
                 padding: var(--space-xl) var(--space-lg);
                 gap: var(--space-lg);
                 overflow-y: auto;
+                position: relative;
+                /* Dot grid */
+                background-image:
+                    radial-gradient(circle, rgba(0,212,255,0.07) 1px, transparent 1px);
+                background-size: 24px 24px;
+                animation: cal-grid-pan 14s linear infinite;
             }
 
+            /* Ambient glow corners */
+            .calibration-page::before {
+                content: '';
+                position: fixed;
+                inset: 0;
+                pointer-events: none;
+                background:
+                    radial-gradient(ellipse 40% 30% at 10% 10%, rgba(0,212,255,0.05) 0%, transparent 70%),
+                    radial-gradient(ellipse 40% 30% at 90% 90%, rgba(127,90,240,0.05) 0%, transparent 70%);
+            }
+
+            /* ── Header ── */
             .calibration-header {
                 text-align: center;
                 max-width: 520px;
+                animation: cal-fade-up 0.4s ease both;
             }
 
             .calibration-title {
                 font-size: var(--font-size-xl);
                 font-weight: var(--font-weight-semibold);
-                color: var(--text-primary);
+                background: linear-gradient(90deg, #e8e8e8 0%, #00d4ff 60%, #7f5af0 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
                 margin-bottom: var(--space-xs);
+                letter-spacing: -0.02em;
             }
 
             .calibration-subtitle {
                 font-size: var(--font-size-sm);
-                color: var(--text-muted);
+                color: rgba(0,212,255,0.5);
                 line-height: var(--line-height);
+                font-family: var(--font-mono);
             }
 
-            /* Timer */
+            /* ── Timer bar ── */
             .timer-bar {
                 width: 100%;
                 max-width: 520px;
@@ -105,47 +144,75 @@ export class CalibrationView extends LitElement {
 
             .timer-track {
                 flex: 1;
-                height: 4px;
-                background: var(--bg-elevated);
+                height: 3px;
+                background: rgba(0,212,255,0.1);
                 border-radius: 2px;
                 overflow: hidden;
             }
 
             .timer-fill {
                 height: 100%;
-                background: var(--accent);
+                background: linear-gradient(90deg, #00d4ff, #7f5af0);
                 border-radius: 2px;
                 transition: width 1s linear;
+                box-shadow: 0 0 8px rgba(0,212,255,0.5);
             }
 
             .timer-text {
                 font-size: var(--font-size-xs);
-                color: var(--text-muted);
+                color: rgba(0,212,255,0.6);
                 font-family: var(--font-mono);
                 white-space: nowrap;
                 min-width: 48px;
                 text-align: right;
             }
 
-            /* Prompt card */
+            /* ── Prompt card ── */
             .prompt-card {
                 width: 100%;
                 max-width: 520px;
-                border: 1px solid var(--border);
+                border: 1px solid rgba(0,212,255,0.22);
                 border-radius: var(--radius-md);
-                background: var(--bg-surface);
+                background: rgba(17,17,17,0.88);
+                backdrop-filter: blur(12px);
                 padding: var(--space-lg);
                 display: flex;
                 flex-direction: column;
                 gap: var(--space-sm);
+                position: relative;
+                overflow: hidden;
+                animation: cal-fade-up 0.35s ease both;
+                box-shadow: 0 0 20px rgba(0,212,255,0.06), 0 8px 32px rgba(0,0,0,0.4);
+            }
+
+            /* Corner accent on prompt card */
+            .prompt-card::before {
+                content: '';
+                position: absolute;
+                top: 0; left: 0;
+                width: 24px; height: 24px;
+                border-top: 2px solid rgba(0,212,255,0.5);
+                border-left: 2px solid rgba(0,212,255,0.5);
+                border-radius: var(--radius-md) 0 0 0;
+            }
+
+            .prompt-card::after {
+                content: '';
+                position: absolute;
+                bottom: 0; right: 0;
+                width: 24px; height: 24px;
+                border-bottom: 2px solid rgba(127,90,240,0.4);
+                border-right: 2px solid rgba(127,90,240,0.4);
+                border-radius: 0 0 var(--radius-md) 0;
             }
 
             .prompt-number {
-                font-size: var(--font-size-xs);
-                color: var(--accent);
+                font-size: 10px;
+                color: #00d4ff;
                 font-weight: var(--font-weight-semibold);
                 text-transform: uppercase;
-                letter-spacing: 0.5px;
+                letter-spacing: 0.12em;
+                font-family: var(--font-mono);
             }
 
             .prompt-text {
@@ -157,11 +224,12 @@ export class CalibrationView extends LitElement {
 
             .prompt-hint {
                 font-size: var(--font-size-xs);
-                color: var(--text-muted);
+                color: rgba(0,212,255,0.4);
                 font-style: italic;
+                font-family: var(--font-mono);
             }
 
-            /* Recording indicator */
+            /* ── Recording indicator ── */
             .recording-indicator {
                 display: flex;
                 align-items: center;
@@ -175,20 +243,16 @@ export class CalibrationView extends LitElement {
                 height: 8px;
                 border-radius: 50%;
                 background: #ef4444;
+                box-shadow: 0 0 8px rgba(239,68,68,0.6);
                 animation: pulse-dot 1.5s ease-in-out infinite;
             }
 
             @keyframes pulse-dot {
-                0%,
-                100% {
-                    opacity: 1;
-                }
-                50% {
-                    opacity: 0.3;
-                }
+                0%,100% { opacity: 1; box-shadow: 0 0 8px rgba(239,68,68,0.6); }
+                50%     { opacity: 0.3; box-shadow: 0 0 3px rgba(239,68,68,0.2); }
             }
 
-            /* Audio level meter */
+            /* ── Audio level meter ── */
             .audio-meter {
                 width: 100%;
                 max-width: 520px;
@@ -199,15 +263,19 @@ export class CalibrationView extends LitElement {
 
             .audio-meter-label {
                 font-size: var(--font-size-xs);
-                color: var(--text-muted);
+                color: rgba(0,212,255,0.45);
                 white-space: nowrap;
                 min-width: 30px;
+                font-family: var(--font-mono);
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                font-size: 9px;
             }
 
             .audio-meter-track {
                 flex: 1;
-                height: 6px;
-                background: var(--bg-elevated);
+                height: 5px;
+                background: rgba(0,212,255,0.08);
                 border-radius: 3px;
                 overflow: hidden;
             }
@@ -215,35 +283,36 @@ export class CalibrationView extends LitElement {
             .audio-meter-fill {
                 height: 100%;
                 border-radius: 3px;
-                background: linear-gradient(90deg, #22c55e 0%, #eab308 60%, #ef4444 100%);
+                background: linear-gradient(90deg, #00d4ff 0%, #22c55e 50%, #ef4444 100%);
                 transition: width 0.05s linear;
                 min-width: 0;
+                box-shadow: 0 0 6px rgba(0,212,255,0.4);
             }
 
-            /* Transcript preview */
+            /* ── Transcript preview ── */
             .transcript-preview {
                 width: 100%;
                 max-width: 520px;
                 min-height: 80px;
                 max-height: 140px;
                 overflow-y: auto;
-                border: 1px solid var(--border);
+                border: 1px solid rgba(0,212,255,0.15);
                 border-radius: var(--radius-sm);
-                background: var(--bg-elevated);
+                background: rgba(0,10,15,0.8);
                 padding: var(--space-sm) var(--space-md);
                 font-size: var(--font-size-sm);
-                color: var(--text-secondary);
+                color: rgba(0,212,255,0.8);
                 line-height: 1.5;
-                font-family: var(--font);
+                font-family: var(--font-mono);
                 white-space: pre-wrap;
             }
 
             .transcript-placeholder {
-                color: var(--text-muted);
+                color: rgba(0,212,255,0.25);
                 font-style: italic;
             }
 
-            /* Nav buttons */
+            /* ── Action buttons ── */
             .calibration-actions {
                 display: flex;
                 gap: var(--space-sm);
@@ -258,95 +327,108 @@ export class CalibrationView extends LitElement {
                 font-size: var(--font-size-sm);
                 font-weight: var(--font-weight-medium);
                 cursor: pointer;
-                border: 1px solid var(--border);
-                background: var(--bg-elevated);
-                color: var(--text-primary);
-                transition: background var(--transition), border-color var(--transition);
+                border: 1px solid rgba(0,212,255,0.2);
+                background: rgba(0,212,255,0.04);
+                color: rgba(0,212,255,0.7);
+                transition: all 0.18s ease;
+                font-family: var(--font-mono);
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                font-size: 11px;
             }
 
             .cal-btn:hover {
-                background: var(--bg-hover);
-                border-color: var(--border-strong);
+                border-color: rgba(0,212,255,0.5);
+                background: rgba(0,212,255,0.1);
+                color: #00d4ff;
+                box-shadow: 0 0 12px rgba(0,212,255,0.12);
             }
 
             .cal-btn.primary {
-                background: #e8e8e8;
-                color: #111;
-                border-color: transparent;
+                background: linear-gradient(135deg, rgba(0,212,255,0.15) 0%, rgba(127,90,240,0.12) 100%);
+                border-color: rgba(0,212,255,0.6);
+                color: #00d4ff;
+                box-shadow: 0 0 14px rgba(0,212,255,0.12);
             }
 
             .cal-btn.primary:hover {
-                opacity: 0.9;
+                background: linear-gradient(135deg, rgba(0,212,255,0.25) 0%, rgba(127,90,240,0.2) 100%);
+                box-shadow: 0 0 20px rgba(0,212,255,0.22);
             }
 
             .cal-btn:disabled {
-                opacity: 0.5;
+                opacity: 0.3;
                 cursor: not-allowed;
             }
 
             .cal-btn.skip {
                 background: transparent;
-                border-color: var(--border);
-                color: var(--text-muted);
+                border-color: rgba(0,212,255,0.1);
+                color: rgba(0,212,255,0.3);
             }
 
-            /* Completion screen */
+            /* ── Completion card ── */
             .completion-card {
                 width: 100%;
                 max-width: 520px;
-                border: 1px solid rgba(34, 197, 94, 0.3);
+                border: 1px solid rgba(34,197,94,0.35);
                 border-radius: var(--radius-md);
-                background: rgba(34, 197, 94, 0.06);
+                background: rgba(34,197,94,0.05);
+                backdrop-filter: blur(12px);
                 padding: var(--space-lg);
                 text-align: center;
                 display: flex;
                 flex-direction: column;
                 gap: var(--space-md);
                 align-items: center;
+                box-shadow: 0 0 30px rgba(34,197,94,0.07);
+                animation: cal-fade-up 0.4s ease both;
             }
 
             .completion-icon {
                 font-size: 32px;
+                filter: drop-shadow(0 0 12px rgba(34,197,94,0.5));
             }
 
             .completion-title {
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-semibold);
-                color: var(--text-primary);
+                background: linear-gradient(90deg, #e8e8e8, #22c55e);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
             }
 
             .completion-subtitle {
                 font-size: var(--font-size-sm);
-                color: var(--text-muted);
+                color: rgba(34,197,94,0.55);
                 line-height: 1.5;
+                font-family: var(--font-mono);
             }
 
             .analyzing-spinner {
                 width: 24px;
                 height: 24px;
-                border: 3px solid var(--border);
-                border-top-color: var(--accent);
+                border: 2px solid rgba(0,212,255,0.15);
+                border-top-color: #00d4ff;
                 border-radius: 50%;
                 animation: spin 0.8s linear infinite;
+                box-shadow: 0 0 10px rgba(0,212,255,0.2);
             }
 
-            @keyframes spin {
-                to {
-                    transform: rotate(360deg);
-                }
-            }
+            @keyframes spin { to { transform: rotate(360deg); } }
 
-            /* Typed text entry fallback */
+            /* ── Typed input fallback ── */
             .typed-input {
                 width: 100%;
                 max-width: 520px;
-                background: var(--bg-elevated);
-                color: var(--text-primary);
-                border: 1px solid var(--border);
+                background: rgba(0,10,15,0.85);
+                color: rgba(0,212,255,0.85);
+                border: 1px solid rgba(0,212,255,0.2);
                 border-radius: var(--radius-sm);
                 padding: var(--space-sm) var(--space-md);
                 font-size: var(--font-size-sm);
-                font-family: var(--font);
+                font-family: var(--font-mono);
                 line-height: 1.5;
                 resize: vertical;
                 min-height: 80px;
@@ -354,41 +436,48 @@ export class CalibrationView extends LitElement {
 
             .typed-input:focus {
                 outline: none;
-                border-color: var(--accent);
-                box-shadow: 0 0 0 1px var(--accent);
+                border-color: rgba(0,212,255,0.6);
+                box-shadow: 0 0 0 1px rgba(0,212,255,0.2), 0 0 12px rgba(0,212,255,0.1);
+            }
+
+            .typed-input::placeholder {
+                color: rgba(0,212,255,0.2);
             }
 
             .mode-toggle {
                 font-size: var(--font-size-xs);
-                color: var(--accent);
+                color: rgba(0,212,255,0.6);
                 cursor: pointer;
                 background: none;
                 border: none;
                 padding: 0;
+                font-family: var(--font-mono);
                 text-decoration: underline;
+                text-underline-offset: 2px;
             }
 
-            .mode-toggle:hover {
-                opacity: 0.8;
-            }
+            .mode-toggle:hover { opacity: 0.8; }
 
             .samples-count {
                 font-size: var(--font-size-xs);
                 color: var(--text-muted);
                 text-align: center;
+                font-family: var(--font-mono);
             }
 
             .status-text {
                 font-size: var(--font-size-xs);
-                color: var(--text-muted);
+                color: rgba(0,212,255,0.45);
                 text-align: center;
                 font-style: italic;
+                font-family: var(--font-mono);
             }
 
             .error-text {
                 font-size: var(--font-size-xs);
                 color: #ef4444;
                 text-align: center;
+                font-family: var(--font-mono);
             }
         `,
     ];

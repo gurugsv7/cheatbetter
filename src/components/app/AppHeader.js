@@ -242,15 +242,15 @@ export class AppHeader extends LitElement {
 
     getViewTitle() {
         const titles = {
-            onboarding: 'Welcome to ashwinbot',
-            main: 'ashwinbot',
+            onboarding: 'Welcome to GSV',
+            main: 'GSV',
             customize: 'Customize',
             help: 'Help & Shortcuts',
             history: 'Conversation History',
             advanced: 'Advanced Tools',
-            assistant: 'ashwinbot',
+            assistant: 'GSV',
         };
-        return titles[this.currentView] || 'ashwinbot';
+        return titles[this.currentView] || 'GSV';
     }
 
     getElapsedTime() {

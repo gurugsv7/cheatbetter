@@ -7,7 +7,7 @@ module.exports = {
             unpack: '**/{onnxruntime-node,onnxruntime-common,@huggingface/transformers,sharp,@img}/**',
         },
         extraResource: ['./src/assets/SystemAudioDump'],
-        name: 'ashwinbot',
+        name: 'GSV',
         icon: 'src/assets/logo',
         // use `security find-identity -v -p codesigning` to find your identity
         // for macos signing
@@ -32,9 +32,9 @@ module.exports = {
         {
             name: '@electron-forge/maker-squirrel',
             config: {
-                name: 'ashwinbot',
-                productName: 'ashwinbot',
-                shortcutName: 'ashwinbot',
+                name: 'GSV',
+                productName: 'GSV',
+                shortcutName: 'GSV',
                 createDesktopShortcut: true,
                 createStartMenuShortcut: true,
             },
@@ -48,8 +48,8 @@ module.exports = {
             platforms: ['linux'],
             config: {
                 options: {
-                    name: 'ashwinbot',
-                    productName: 'ashwinbot',
+                    name: 'GSV',
+                    productName: 'GSV',
                     genericName: 'AI Assistant',
                     description: 'AI assistant for interviews and learning',
                     categories: ['Development', 'Education'],

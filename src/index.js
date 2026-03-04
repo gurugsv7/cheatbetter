@@ -2,7 +2,9 @@ if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
 
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, dialog } = require('electron');
+const path = require('path');
+const fs = require('fs');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
 const storage = require('./storage');
@@ -383,5 +385,28 @@ function setupGeneralIpcHandlers() {
     // Debug logging from renderer
     ipcMain.on('log-message', (event, msg) => {
         console.log(msg);
+    });
+
+    // Open a native file picker filtered to PDF / DOCX
+    ipcMain.handle('open-file-dialog', async (event, options) => {
+        const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, options || {});
+        if (canceled || filePaths.length === 0) return null;
+        return filePaths[0];
+    });
+
+    // Parse PDF or DOCX and return raw text
+    ipcMain.handle('parse-document', async (event, filePath) => {
+        const ext = path.extname(filePath).toLowerCase();
+        if (ext === '.docx') {
+            const mammoth = require('mammoth');
+            const result = await mammoth.extractRawText({ path: filePath });
+            return { text: result.value, fileName: path.basename(filePath) };
+        } else if (ext === '.pdf') {
+            const pdfParse = require('pdf-parse');
+            const buffer = fs.readFileSync(filePath);
+            const result = await pdfParse(buffer);
+            return { text: result.text, fileName: path.basename(filePath) };
+        }
+        throw new Error('Unsupported file type. Please use PDF or DOCX.');
     });
 }

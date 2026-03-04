@@ -10,27 +10,60 @@ export class MainView extends LitElement {
         }
 
         :host {
-            height: 100%;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            padding: var(--space-xl) var(--space-lg);
+            justify-content: flex-start;
+            overflow-y: auto;
+            padding: var(--space-md) var(--space-lg) var(--space-lg);
+            position: relative;
+            background-image: radial-gradient(circle, rgba(0, 212, 255, 0.06) 1px, transparent 1px);
+            background-size: 24px 24px;
+            animation: main-grid-pan 14s linear infinite;
+        }
+
+        @keyframes main-grid-pan {
+            0%   { background-position: 0 0; }
+            100% { background-position: 24px 24px; }
+        }
+
+        :host::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 50% 35% at 15% 0%, rgba(0,212,255,0.05) 0%, transparent 70%),
+                radial-gradient(ellipse 50% 35% at 85% 100%, rgba(127,90,240,0.05) 0%, transparent 70%);
+            z-index: 0;
         }
 
         .form-wrapper {
             width: 100%;
-            max-width: 420px;
+            max-width: 400px;
             display: flex;
             flex-direction: column;
-            gap: var(--space-md);
+            gap: var(--space-sm);
+            position: relative;
+            z-index: 1;
+            animation: form-fade-up 0.35s ease both;
+            padding-top: 10px;
+        }
+
+        @keyframes form-fade-up {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
 
         .page-title {
-            font-size: var(--font-size-xl);
+            font-size: var(--font-size-lg);
             font-weight: var(--font-weight-semibold);
-            color: var(--text-primary);
-            margin-bottom: var(--space-xs);
+            background: linear-gradient(90deg, #e8e8e8 0%, #00d4ff 60%, #7f5af0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 2px;
+            letter-spacing: -0.02em;
         }
 
         .page-title .mode-suffix {
@@ -38,9 +71,10 @@ export class MainView extends LitElement {
         }
 
         .page-subtitle {
-            font-size: var(--font-size-sm);
-            color: var(--text-muted);
-            margin-bottom: var(--space-md);
+            font-size: var(--font-size-xs);
+            color: rgba(0, 212, 255, 0.45);
+            margin-bottom: var(--space-sm);
+            font-family: var(--font-mono);
         }
 
         /* ── Cloud promo card ── */
@@ -116,19 +150,20 @@ export class MainView extends LitElement {
         }
 
         .form-label {
-            font-size: var(--font-size-xs);
+            font-size: 10px;
             font-weight: var(--font-weight-medium);
-            color: var(--text-secondary);
+            color: rgba(0, 212, 255, 0.65);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.1em;
+            font-family: var(--font-mono);
         }
 
         input,
         select,
         textarea {
-            background: var(--bg-elevated);
+            background: rgba(25, 25, 25, 0.9);
             color: var(--text-primary);
-            border: 1px solid var(--border);
+            border: 1px solid rgba(0, 212, 255, 0.18);
             padding: 10px 12px;
             width: 100%;
             border-radius: var(--radius-sm);
@@ -142,15 +177,15 @@ export class MainView extends LitElement {
         input:hover:not(:focus),
         select:hover:not(:focus),
         textarea:hover:not(:focus) {
-            border-color: var(--text-muted);
+            border-color: rgba(0, 212, 255, 0.38);
         }
 
         input:focus,
         select:focus,
         textarea:focus {
             outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 1px var(--accent);
+            border-color: rgba(0, 212, 255, 0.75);
+            box-shadow: 0 0 0 1px rgba(0,212,255,0.25), 0 0 10px rgba(0,212,255,0.1);
         }
 
         input::placeholder,
@@ -341,17 +376,19 @@ export class MainView extends LitElement {
             gap: 4px;
             padding: 12px 14px;
             border-radius: var(--radius-md);
-            border: 1px solid var(--border);
-            background: var(--bg-elevated);
+            border: 1px solid rgba(0, 212, 255, 0.15);
+            background: rgba(0, 212, 255, 0.03);
             cursor: pointer;
             transition:
                 border-color 0.2s,
-                background 0.2s;
+                background 0.2s,
+                box-shadow 0.2s;
         }
 
         .mode-card:hover {
-            border-color: var(--text-muted);
-            background: var(--bg-hover);
+            border-color: rgba(0, 212, 255, 0.4);
+            background: rgba(0, 212, 255, 0.08);
+            box-shadow: 0 0 14px rgba(0,212,255,0.08);
         }
 
         .mode-card-title {
@@ -504,13 +541,16 @@ export class MainView extends LitElement {
             gap: var(--space-sm);
             padding: 10px 14px;
             border-radius: var(--radius-sm);
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            background: rgba(34, 197, 94, 0.06);
+            border: 1px solid rgba(34, 197, 94, 0.35);
+            background: rgba(34, 197, 94, 0.05);
+            backdrop-filter: blur(6px);
+            box-shadow: 0 0 12px rgba(34,197,94,0.06);
         }
 
         .voice-profile-card.empty {
-            border-color: var(--border);
-            background: var(--bg-elevated);
+            border-color: rgba(0, 212, 255, 0.12);
+            background: rgba(0, 212, 255, 0.03);
+            box-shadow: none;
         }
 
         .voice-profile-icon {
@@ -1070,7 +1110,7 @@ export class MainView extends LitElement {
             <div class="cloud-promo" @click=${() => this._saveMode('cloud')}>
                 <div class="cloud-promo-glow"></div>
                 <div class="cloud-promo-header">
-                    <span class="cloud-promo-title">Switch to ashwinbot Cloud</span>
+                    <span class="cloud-promo-title">Switch to GSV Cloud</span>
                     <span class="cloud-promo-arrow">&rarr;</span>
                 </div>
                 <div class="cloud-promo-desc">No API keys, no setup, no billing headaches. It just works.</div>
@@ -1133,7 +1173,7 @@ export class MainView extends LitElement {
             <div class="cloud-promo" @click=${() => this._saveMode('cloud')}>
                 <div class="cloud-promo-glow"></div>
                 <div class="cloud-promo-header">
-                    <span class="cloud-promo-title">Switch to ashwinbot Cloud</span>
+                    <span class="cloud-promo-title">Switch to GSV Cloud</span>
                     <span class="cloud-promo-arrow">&rarr;</span>
                 </div>
                 <div class="cloud-promo-desc">No API keys, no setup, no billing headaches. It just works.</div>
@@ -1163,7 +1203,7 @@ export class MainView extends LitElement {
                 ${this._mode === 'local'
                     ? html`
                           <div class="title-row">
-                              <div class="page-title">ashwinbot <span class="mode-suffix">Local AI</span></div>
+                              <div class="page-title">GSV <span class="mode-suffix">Local AI</span></div>
                               <button
                                   class="help-btn"
                                   @click=${() => {
@@ -1176,7 +1216,7 @@ export class MainView extends LitElement {
                       `
                     : html`
                           <div class="page-title">
-                              ${this._mode === 'cloud' ? 'ashwinbot Cloud' : html`ashwinbot <span class="mode-suffix">BYOK</span>`}
+                              ${this._mode === 'cloud' ? 'GSV Cloud' : html`GSV <span class="mode-suffix">BYOK</span>`}
                           </div>
                       `}
                 <div class="page-subtitle">
