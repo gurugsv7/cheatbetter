@@ -185,9 +185,11 @@ function buildCombinedContext(prefs) {
 
 async function initializeGemini(profile = 'interview', language = 'en-US') {
     const apiKey = await storage.getApiKey();
-    if (apiKey) {
+    const azureKey = await storage.getAzureApiKey();
+    // Trigger session start when either Gemini OR Azure key is configured
+    if (apiKey || azureKey) {
         const prefs = await storage.getPreferences();
-        const success = await ipcRenderer.invoke('initialize-gemini', apiKey, buildCombinedContext(prefs), profile, language);
+        const success = await ipcRenderer.invoke('initialize-gemini', apiKey || '', buildCombinedContext(prefs), profile, language);
         if (success) {
             cheatingDaddy.setStatus('Live');
         } else {
@@ -613,10 +615,10 @@ const MANUAL_SCREENSHOT_PROMPT = `Extract ALL visible questions and their corres
 
 Format:
 - For each question, output the question text followed by its answer on a new line.
-- MCQ: "Q1: [question]" then "A: [answer]"
-- Math: "Q: [question]" then "A: [final answer]"
-- Code: "Q: [question]" then "A: [working code — no preamble, start with the code block]"
-- Text: "Q: [question]" then "A: [1-2 sentence answer]"
+- MCQ: "Q1: [question]" then "ANS: [correct option letter]) [option text]" — identify which option letter (A/B/C/D/etc.) is actually correct and output that letter. NEVER default to A unless A is genuinely the right answer. Example: "ANS: C) Nominal Data"
+- Math: "Q: [question]" then "ANS: [final answer]"
+- Code: "Q: [question]" then "ANS: [working code — no preamble, start with the code block]"
+- Text: "Q: [question]" then "ANS: [1-2 sentence answer]"
 
 If multiple questions are visible, extract and answer each. Do not skip any visible question. If a question is partially visible, extract as much as possible.
 

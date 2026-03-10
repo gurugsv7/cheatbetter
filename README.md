@@ -59,9 +59,10 @@ npm install
 npm start
 ```
 
-For **BYOK / Gemini** mode, get a free API key at [Google AI Studio](https://aistudio.google.com/apikey).
-
-For **Groq** mode, get a key at [console.groq.com](https://console.groq.com).
+For **BYOK** mode, you need **one** of the following — not all:
+- **Gemini** — get a free key at [Google AI Studio](https://aistudio.google.com/apikey)
+- **Groq** — get a key at [console.groq.com](https://console.groq.com)
+- **Azure** — provide your Azure OpenAI endpoint and key (Gemini and Groq keys are not needed)
 
 For **Local AI** mode, install [Ollama](https://ollama.com) and pull any model (e.g. `ollama pull llama3.2`). Whisper is downloaded automatically on first session start.
 

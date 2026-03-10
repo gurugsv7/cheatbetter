@@ -668,13 +668,12 @@ export class CheatingDaddyApp extends LitElement {
     }
 
     _extractScreenAnalysisMarkers(text) {
-        if (!this._awaitingScreenAnalysis) return text;
-
         let cleaned = text;
 
-        // Extract layout hint
+        // Always strip layout markers from displayed text; only act on the hint
+        // when a screen analysis is in progress.
         const layoutMatch = cleaned.match(/===LAYOUT:(left|right|center|top-left|top-right|bottom-left|bottom-right)===/i);
-        if (layoutMatch && !this._layoutRepositioned) {
+        if (layoutMatch && this._awaitingScreenAnalysis && !this._layoutRepositioned) {
             this._layoutRepositioned = true;
             const hint = layoutMatch[1].toLowerCase();
             if (window.cheatingDaddy?.repositionWindow) {
@@ -683,15 +682,15 @@ export class CheatingDaddyApp extends LitElement {
         }
         cleaned = cleaned.replace(/\n?===LAYOUT:[a-z-]+===\n?/gi, '');
 
-        // Extract code issue
+        // Always strip code-issue markers; only store the content during analysis.
         const issueMatch = cleaned.match(/===CODE_ISSUE_START===\n?([\s\S]*?)\n?===CODE_ISSUE_END===/i);
-        if (issueMatch) {
+        if (issueMatch && this._awaitingScreenAnalysis) {
             this._errorContent = issueMatch[1].trim();
         }
         cleaned = cleaned.replace(/\n?===CODE_ISSUE_START===\n?[\s\S]*?\n?===CODE_ISSUE_END===\n?/gi, '');
 
         // Once status goes to Listening/Ready, analysis is done
-        if (this.statusText?.includes('Listening') || this.statusText?.includes('Ready')) {
+        if (this._awaitingScreenAnalysis && (this.statusText?.includes('Listening') || this.statusText?.includes('Ready'))) {
             this._awaitingScreenAnalysis = false;
         }
 

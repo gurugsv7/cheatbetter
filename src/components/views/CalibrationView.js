@@ -908,7 +908,7 @@ export class CalibrationView extends LitElement {
 
     /**
      * Transcribes an audio Blob to text.
-     * Tries: 1) Groq Whisper  2) Gemini audio  3) returns empty
+     * Tries: 1) Groq Whisper  2) Azure Speech REST  3) returns empty
      */
     async _transcribeAudio(audioBlob) {
         // Try Groq Whisper first (fast, free, reliable)
@@ -922,15 +922,16 @@ export class CalibrationView extends LitElement {
             }
         }
 
-        // Try Gemini with inline audio
-        const geminiKey = await window.cheatingDaddy.storage.getApiKey();
-        if (geminiKey) {
-            try {
-                const text = await this._transcribeWithGemini(audioBlob, geminiKey);
+        // Try Azure Speech REST API
+        try {
+            const azureKey = await window.cheatingDaddy.storage.getAzureApiKey();
+            const azureEndpoint = await window.cheatingDaddy.storage.getAzureEndpoint();
+            if (azureKey && azureEndpoint) {
+                const text = await this._transcribeWithAzureSpeech(audioBlob, azureKey, azureEndpoint);
                 if (text) return text;
-            } catch (e) {
-                console.warn('Gemini audio transcription failed:', e);
             }
+        } catch (e) {
+            console.warn('Azure Speech transcription failed:', e);
         }
 
         console.warn('No transcription API available');
@@ -958,6 +959,29 @@ export class CalibrationView extends LitElement {
         }
 
         return await response.text();
+    }
+
+    async _transcribeWithAzureSpeech(audioBlob, apiKey, endpoint) {
+        // Extract region from endpoint e.g. https://foo-eastus2.cognitiveservices.azure.com
+        const match = endpoint.match(/[a-z0-9-]+\.(\w+)\.cognitiveservices\.azure\.com/i);
+        const region = match ? match[1] : null;
+        if (!region) throw new Error('Cannot extract region from Azure endpoint');
+
+        const language = (this.language || 'en-US');
+        const url = `https://${region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=${language}&format=simple`;
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Ocp-Apim-Subscription-Key': apiKey,
+                'Content-Type': audioBlob.type || 'audio/webm;codecs=opus',
+            },
+            body: audioBlob,
+        });
+
+        if (!response.ok) throw new Error(`Azure Speech ${response.status}`);
+        const data = await response.json();
+        return data.DisplayText || data.NBest?.[0]?.Display || '';
     }
 
     async _transcribeWithGemini(audioBlob, apiKey) {

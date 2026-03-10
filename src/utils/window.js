@@ -283,6 +283,10 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.hide();
 
+                    if (geminiSessionRef.stopSTT) {
+                        geminiSessionRef.stopSTT();
+                        geminiSessionRef.stopSTT = null;
+                    }
                     if (geminiSessionRef.current) {
                         geminiSessionRef.current.close();
                         geminiSessionRef.current = null;

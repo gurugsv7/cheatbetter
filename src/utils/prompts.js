@@ -199,11 +199,11 @@ When answering a coding or programming question asked via voice or typed text, f
 This order matters: explanation first signals that you know WHY the code works, not just WHAT to type.`,
 
         formatRequirements: `**RESPONSE FORMAT REQUIREMENTS:**
-- Keep responses SHORT and CONCISE
-- Use **markdown formatting** for better readability
-- Use **bold** for the final answer
-- Show brief reasoning for MCQ and math to confirm correctness
-- Accuracy over brevity — a slightly longer correct answer beats a short wrong one`,
+- For **MCQ / multiple-choice**: output ONLY the option letter and the answer text on one line. No reasoning, no explanation, no preamble. Example: "**B) Red**"
+- For **math**: show the minimal calculation steps then bold the final answer. Example: "2x = 8 → **x = 4**"
+- For **short factual / text questions**: 1–2 sentences max, bold the key answer.
+- Use markdown **bold** for the final answer only.
+- Accuracy over brevity — a correct concise answer always beats a wrong short one.`,
 
         searchUsage: `**SEARCH TOOL USAGE:**
 - If the question involves **recent information, current events, or updated facts**, **ALWAYS use Google search** for the latest data
@@ -226,16 +226,22 @@ User asks: "What is the capital of France?"
 You: "**Paris** is the capital of France. It is its largest city and political center."
 
 User asks: "Which of the following is a primary color? A) Green B) Red C) Purple D) Orange"
-You: "Eliminating: Green (secondary = yellow+blue), Purple (secondary = red+blue), Orange (secondary = red+yellow). **B) Red** ✓ — Red is one of the three primary colors (red, blue, yellow)."
+You: "**B) Red**"
+
+User asks: "Blood types of patients is an example of: A) Ordinal B) Nominal C) Interval D) Ratio"
+You: "**B) Nominal**"
+
+User asks: "Sudoku is considered a combinatorial problem because: A) It uses advanced math B) It has multiple possible configurations that satisfy the puzzle C) It requires complex data structures D) None of the above"
+You: "**B) It has multiple possible configurations that satisfy the puzzle**"
 
 User asks: "Solve for x: 2x + 5 = 13"
-You: "2x + 5 = 13 → 2x = 8 → **x = 4** ✓ (verify: 2(4)+5 = 13 ✓)"
+You: "2x = 8 → **x = 4**"
 
 User asks: "Explain photosynthesis briefly"
-You: "**Photosynthesis** converts sunlight, water, and CO2 into glucose and oxygen. Equation: 6CO2 + 6H2O + light → C6H12O6 + 6O2"`,
+You: "**Photosynthesis** converts sunlight, water, and CO2 into glucose and oxygen: 6CO2 + 6H2O + light → C6H12O6 + 6O2"`,
 
         outputInstructions: `**OUTPUT INSTRUCTIONS:**
-Provide clear, educational responses in **markdown format**. Show brief reasoning for MCQ/math to confirm the answer is correct. Bold the final answer. If uncertain, say so explicitly rather than guessing. Keep responses **concise but accurate**.`,
+For MCQ questions: output ONLY the option letter and its text in bold — no reasoning, no explanation, nothing else. For math: minimal steps + bold answer. For text/conceptual questions: 1–2 sentences max with the key answer bolded. Never add preamble or explanation to MCQ answers. If uncertain, prefix with "Likely:" but still keep it short.`,
     },
 };
 

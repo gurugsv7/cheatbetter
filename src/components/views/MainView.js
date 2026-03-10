@@ -924,7 +924,8 @@ export class MainView extends LitElement {
                 return;
             }
         } else if (this._mode === 'byok') {
-            if (!this._geminiKey.trim()) {
+            const hasAzure = this._azureEndpoint.trim() && this._azureApiKey.trim();
+            if (!this._geminiKey.trim() && !hasAzure) {
                 this._keyError = true;
                 this.requestUpdate();
                 return;
@@ -1062,10 +1063,10 @@ export class MainView extends LitElement {
                 <label class="form-label">Gemini API Key</label>
                 <input
                     type="password"
-                    placeholder="Required"
+                    placeholder=${this._azureEndpoint.trim() && this._azureApiKey.trim() ? 'Optional (Azure configured)' : 'Required'}
                     .value=${this._geminiKey}
                     @input=${e => this._saveGeminiKey(e.target.value)}
-                    class=${this._keyError ? 'error' : ''}
+                    class=${this._keyError && !this._azureEndpoint.trim() ? 'error' : ''}
                 />
                 <div class="form-hint">
                     <span class="link" @click=${() => this.onExternalLink('https://aistudio.google.com/apikey')}>Get Gemini key</span>
