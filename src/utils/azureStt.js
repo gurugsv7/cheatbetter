@@ -14,10 +14,22 @@ function extractRegion(endpoint) {
 function startAzureSTT(apiKey, endpoint, language, onTranscript) {
     if (isStarted) stopAzureSTT();
 
+    // Validate credentials
+    if (!apiKey || apiKey.trim() === '') {
+        console.error('[AzureSTT] API key is empty or invalid');
+        return;
+    }
+    if (!endpoint || endpoint.trim() === '') {
+        console.error('[AzureSTT] Endpoint is empty or invalid');
+        return;
+    }
+
     onTranscriptCallback = onTranscript;
 
     const region = extractRegion(endpoint);
     console.log('[AzureSTT] Starting with region:', region, '| language:', language);
+    console.log('[AzureSTT] Endpoint:', endpoint);
+    console.log('[AzureSTT] API Key length:', apiKey.length, '| First 5 chars:', apiKey.substring(0, 5) + '***');
 
     const speechConfig = sdk.SpeechConfig.fromSubscription(apiKey, region);
     speechConfig.speechRecognitionLanguage = language || 'en-US';
@@ -47,6 +59,15 @@ function startAzureSTT(apiKey, endpoint, language, onTranscript) {
 
     recognizer.canceled = (s, e) => {
         console.error('[AzureSTT] Canceled:', e.errorDetails);
+        if (e.reason === sdk.CancellationReason.Error) {
+            console.error('[AzureSTT] Error code:', e.errorCode);
+            console.error('[AzureSTT] Error details:', e.errorDetails);
+            if (e.errorCode === sdk.CancellationErrorCode.Unauthorized) {
+                console.error('[AzureSTT] Authentication failed — verify API key and region are correct');
+            } else if (e.errorCode === sdk.CancellationErrorCode.ConnectionFailure) {
+                console.error('[AzureSTT] Connection failed — check network and endpoint URL');
+            }
+        }
     };
 
     recognizer.sessionStopped = () => {

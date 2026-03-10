@@ -16,6 +16,7 @@ const {
 } = require('../storage');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 const azureStt = require('./azureStt');
+const geminiStt = require('./geminiStt');
 
 // Lazy-loaded to avoid circular dependency (localai.js imports from gemini.js)
 let _localai = null;
@@ -953,8 +954,8 @@ async function startMacOSAudioCapture(geminiSessionRef) {
                 getLocalAi().processLocalAudio(monoChunk);
             } else {
                 const base64Data = monoChunk.toString('base64');
-                if (azureStt.isAzureSTTActive()) {
-                    azureStt.pushAudioToSTT(base64Data);
+                if (geminiStt.isGeminiSTTActive()) {
+                    geminiStt.pushAudio(base64Data);
                 } else {
                     sendAudioToGemini(base64Data, geminiSessionRef);
                 }
@@ -1120,26 +1121,28 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     ipcMain.handle('initialize-gemini', async (event, apiKey, customPrompt, profile = 'interview', language = 'en-US') => {
         currentProviderMode = 'byok';
 
-        // If Azure keys are configured, use Azure STT + Azure OpenAI — skip Gemini Live entirely
-        const azureApiKey = getAzureApiKey();
-        const azureEndpoint = getAzureEndpoint();
+        // If Azure keys are configured, use Groq Whisper STT + Azure OpenAI — skip Gemini Live entirely
         if (hasAzureKey()) {
-            // Store profile/prompt for Azure answers
+            const groqKey = getGroqApiKey();
+            if (!groqKey) {
+                console.error('[Init] Azure mode requires a Groq API key for STT — add it in settings');
+                sendToRenderer('update-status', 'Add Groq API key for STT');
+                return false;
+            }
             currentProfile = profile;
             currentCustomPrompt = customPrompt;
             const googleSearchEnabled = false;
             currentSystemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled, null);
             initializeNewSession(profile, customPrompt);
 
-            // Start Azure STT — it calls sendToAzure directly when speech is recognized
-            azureStt.startAzureSTT(azureApiKey, azureEndpoint, language, (transcription) => {
+            // Groq Whisper STT → Azure OpenAI for answers
+            geminiStt.startGeminiSTT(groqKey, language, (transcription) => {
                 sendToRenderer('update-status', 'Processing...');
                 sendToAzure(transcription);
             });
-            // Expose stop function via ref so window.js emergency erase can call it
-            geminiSessionRef.stopSTT = () => azureStt.stopAzureSTT();
+            geminiSessionRef.stopSTT = () => geminiStt.stopGeminiSTT();
             sendToRenderer('update-status', 'Listening...');
-            console.log('[Init] Azure STT started — Gemini Live not used');
+            console.log('[Init] Groq Whisper STT started — Azure OpenAI will handle responses');
             return true;
         }
 
@@ -1182,9 +1185,9 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: false, error: error.message };
             }
         }
-        // Azure STT path — fastest: push directly to Azure Speech Service
-        if (azureStt.isAzureSTTActive()) {
-            azureStt.pushAudioToSTT(data);
+        // Gemini STT path — push audio to Gemini speech-to-text
+        if (geminiStt.isGeminiSTTActive()) {
+            geminiStt.pushAudio(data);
             return { success: true };
         }
         if (!geminiSessionRef.current) return { success: false, error: 'No active session' };
@@ -1222,9 +1225,9 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: false, error: error.message };
             }
         }
-        // Azure STT path — mic audio also goes to Azure STT
-        if (azureStt.isAzureSTTActive()) {
-            azureStt.pushAudioToSTT(data);
+        // Gemini STT path — mic audio also goes to Gemini STT
+        if (geminiStt.isGeminiSTTActive()) {
+            geminiStt.pushAudio(data);
             return { success: true };
         }
         if (!geminiSessionRef.current) return { success: false, error: 'No active session' };
@@ -1413,9 +1416,9 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             isUserClosing = true;
             sessionParams = null;
 
-            // Stop Azure STT if active
-            if (azureStt.isAzureSTTActive()) {
-                azureStt.stopAzureSTT();
+            // Stop Gemini STT if active
+            if (geminiStt.isGeminiSTTActive()) {
+                geminiStt.stopGeminiSTT();
             }
 
             // Cleanup Gemini session if present
