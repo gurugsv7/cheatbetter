@@ -37,10 +37,19 @@ Deno.serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const expectedAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 
     if (!supabaseUrl || !serviceRoleKey) {
         return new Response(JSON.stringify({ error: 'Supabase service runtime missing env vars' }), {
             status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+    }
+
+    const apikeyHeader = (req.headers.get('apikey') ?? '').trim();
+    if (expectedAnonKey && apikeyHeader !== expectedAnonKey) {
+        return new Response(JSON.stringify({ error: 'Unauthorized request' }), {
+            status: 401,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
     }
@@ -50,20 +59,24 @@ Deno.serve(async (req: Request) => {
         ? authHeader.slice(7).trim()
         : '';
 
-    let bodyToken = '';
     let consume = false;
     try {
         const body = (await req.json().catch(() => ({}))) as { accessToken?: string; consume?: boolean };
-        bodyToken = (body.accessToken ?? '').trim();
         consume = Boolean(body.consume);
     } catch {
-        bodyToken = '';
         consume = false;
     }
 
-    const accessToken = (bearerToken || bodyToken).trim();
+    const accessToken = bearerToken.trim();
     if (!accessToken) {
         return new Response(JSON.stringify({ error: 'Missing access token' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+    }
+
+    if (!accessToken.startsWith('SKI-')) {
+        return new Response(JSON.stringify({ error: 'Invalid access token format' }), {
             status: 401,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
