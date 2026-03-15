@@ -11,9 +11,11 @@ const {
     getAzureApiKey,
     getAzureEndpoint,
     getAzureDeployment,
+    getCredentials,
     incrementCharUsage,
     getModelForToday,
 } = require('../storage');
+const supabaseConfig = require('./supabaseConfig');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 const azureStt = require('./azureStt');
 const geminiStt = require('./geminiStt');
@@ -41,6 +43,104 @@ let currentCustomPrompt = null;
 let isInitializingSession = false;
 let currentSystemPrompt = null;
 let currentVoiceProfile = null;
+let runtimeProviderSecrets = null;
+let runtimeSecretsToken = '';
+let runtimeSecretsResolvedAt = 0;
+
+const PROVIDER_SECRETS_CACHE_TTL_MS = 30 * 60 * 1000;
+
+function getEffectiveApiKey() {
+    return runtimeProviderSecrets?.geminiApiKey || getApiKey();
+}
+
+function getEffectiveGroqApiKey() {
+    return runtimeProviderSecrets?.groqApiKey || getGroqApiKey();
+}
+
+function getEffectiveAzureApiKey() {
+    return runtimeProviderSecrets?.azureApiKey || getAzureApiKey();
+}
+
+function getEffectiveAzureEndpoint() {
+    return runtimeProviderSecrets?.azureEndpoint || getAzureEndpoint();
+}
+
+function getEffectiveAzureDeployment() {
+    return runtimeProviderSecrets?.azureDeployment || getAzureDeployment();
+}
+
+function hasManagedCloudToken() {
+    const cloudToken = runtimeProviderSecrets?.cloudToken || '';
+    return !!cloudToken.trim();
+}
+
+function clearRuntimeProviderSecrets() {
+    runtimeProviderSecrets = null;
+    runtimeSecretsToken = '';
+    runtimeSecretsResolvedAt = 0;
+}
+
+async function resolveProviderSecrets(accessToken, options = {}) {
+    const token = (accessToken || '').trim();
+    const consume = Boolean(options.consume);
+    if (!token) {
+        throw new Error('Access token is required');
+    }
+
+    const now = Date.now();
+    if (
+        !consume &&
+        runtimeProviderSecrets
+        && runtimeSecretsToken === token
+        && (now - runtimeSecretsResolvedAt) < PROVIDER_SECRETS_CACHE_TTL_MS
+    ) {
+        return { success: true, data: runtimeProviderSecrets, cached: true };
+    }
+
+    const storedCreds = getCredentials();
+    const supabaseUrl = (storedCreds.supabaseUrl || supabaseConfig.url || '').trim();
+    const supabaseAnonKey = (storedCreds.supabaseAnonKey || supabaseConfig.anonKey || '').trim();
+    const functionName = (supabaseConfig.resolveSecretsFunction || 'resolve-provider-secrets').trim();
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error('Supabase runtime is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY.');
+    }
+
+    const endpoint = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/${functionName}`;
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            apikey: supabaseAnonKey,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ accessToken: token, consume }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Secret resolution failed (${response.status}): ${errorText}`);
+    }
+
+    const payload = await response.json();
+    const data = payload?.data || payload;
+    if (!data || typeof data !== 'object') {
+        throw new Error('Invalid secret response payload');
+    }
+
+    runtimeProviderSecrets = {
+        geminiApiKey: data.geminiApiKey || '',
+        groqApiKey: data.groqApiKey || '',
+        azureApiKey: data.azureApiKey || '',
+        azureEndpoint: data.azureEndpoint || '',
+        azureDeployment: data.azureDeployment || '',
+        cloudToken: data.cloudToken || '',
+    };
+    runtimeSecretsToken = token;
+    runtimeSecretsResolvedAt = now;
+
+    return { success: true, data: runtimeProviderSecrets };
+}
 
 function formatSpeakerResults(results) {
     let text = '';
@@ -128,6 +228,23 @@ function saveConversationTurn(transcription, aiResponse) {
     });
 }
 
+function updateLastConversationTurn(aiResponse) {
+    if (!currentSessionId || !conversationHistory.length || !aiResponse) return;
+
+    const lastIndex = conversationHistory.length - 1;
+    conversationHistory[lastIndex] = {
+        ...conversationHistory[lastIndex],
+        timestamp: Date.now(),
+        ai_response: aiResponse.trim(),
+    };
+
+    sendToRenderer('save-conversation-turn', {
+        sessionId: currentSessionId,
+        turn: conversationHistory[lastIndex],
+        fullHistory: conversationHistory,
+    });
+}
+
 function saveScreenAnalysis(prompt, response, model) {
     if (!currentSessionId) {
         initializeNewSession();
@@ -153,6 +270,66 @@ function saveScreenAnalysis(prompt, response, model) {
     });
 }
 
+function updateLastScreenAnalysis(response) {
+    if (!currentSessionId || !screenAnalysisHistory.length || !response) return;
+
+    const lastIndex = screenAnalysisHistory.length - 1;
+    screenAnalysisHistory[lastIndex] = {
+        ...screenAnalysisHistory[lastIndex],
+        timestamp: Date.now(),
+        response: response.trim(),
+    };
+
+    sendToRenderer('save-screen-analysis', {
+        sessionId: currentSessionId,
+        analysis: screenAnalysisHistory[lastIndex],
+        fullHistory: screenAnalysisHistory,
+        profile: currentProfile,
+        customPrompt: currentCustomPrompt,
+    });
+}
+
+function resolveSelfHealProvider(preferredProvider = null) {
+    if (preferredProvider === 'azure' || preferredProvider === 'groq') {
+        return preferredProvider;
+    }
+    if (hasAzureKey()) return 'azure';
+    if (hasGroqKey()) return 'groq';
+    return null;
+}
+
+async function schedulePostAnswerSelfHeal({
+    transcription,
+    response,
+    provider = null,
+    persistType = null,
+}) {
+    const baseText = String(response || '').trim();
+    if (!baseText) return;
+    if (!isLikelyCodingPrompt(transcription || '', baseText)) return;
+
+    const healProvider = resolveSelfHealProvider(provider);
+    if (!healProvider) return;
+
+    setTimeout(async () => {
+        try {
+            const healed = await maybeHumanizeCodeResponse(transcription || '', baseText, healProvider);
+            const healedText = String(healed || '').trim();
+            if (!healedText || healedText === baseText) return;
+
+            sendToRenderer('update-response', healedText);
+
+            if (persistType === 'conversation') {
+                updateLastConversationTurn(healedText);
+            } else if (persistType === 'screen') {
+                updateLastScreenAnalysis(healedText);
+            }
+        } catch (error) {
+            console.warn('Post-answer self-heal skipped:', error.message);
+        }
+    }, 1000);
+}
+
 function getCurrentSessionData() {
     return {
         sessionId: currentSessionId,
@@ -160,6 +337,13 @@ function getCurrentSessionData() {
     };
 }
 
+// ── Intelligent auto-advance logic ──
+/**
+ * Determines if a new response should auto-advance the UI or stay on current response.
+ * In speaker-only mode, prevents jumping to follow-up questions until user answers first.
+ * @param {string} newResponse - The new AI response text
+ * @returns {boolean} true if should auto-advance, false if should wait for user answer
+ */
 async function getEnabledTools() {
     const tools = [];
 
@@ -209,15 +393,15 @@ async function getStoredSetting(key, defaultValue) {
 
 // helper to check if groq has been configured
 function hasGroqKey() {
-    const key = getGroqApiKey();
-    return key && key.trim() != '';
+    const key = getEffectiveGroqApiKey();
+    return key && key.trim() !== '';
 }
 
 // helper to check if azure has been configured
 function hasAzureKey() {
-    const key = getAzureApiKey();
-    const endpoint = getAzureEndpoint();
-    const deployment = getAzureDeployment();
+    const key = getEffectiveAzureApiKey();
+    const endpoint = getEffectiveAzureEndpoint();
+    const deployment = getEffectiveAzureDeployment();
     return key && key.trim() !== '' && endpoint && endpoint.trim() !== '' && deployment && deployment.trim() !== '';
 }
 
@@ -241,8 +425,222 @@ function stripThinkingTags(text) {
     return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 }
 
+function isLikelyCodingPrompt(transcription = '', response = '') {
+    const content = `${transcription}\n${response}`.toLowerCase();
+    const codingSignals = [
+        'leetcode',
+        'hacker',
+        'hackerearth',
+        'code',
+        'function',
+        'class ',
+        'array',
+        'string',
+        'linked list',
+        'binary tree',
+        'graph',
+        'dp',
+        'dynamic programming',
+        'complexity',
+        'time complexity',
+        'space complexity',
+        'python',
+        'java',
+        'cpp',
+        'javascript',
+    ];
+
+    if (codingSignals.some(signal => content.includes(signal))) return true;
+    return /```[\s\S]*```/.test(response);
+}
+
+function buildCodeHumanizerMessages(transcription, draftResponse) {
+    return [
+        {
+            role: 'system',
+            content: `You are a code uniqueness rewriter. Rewrite the candidate answer to reduce plagiarism/code-similarity risk while preserving correctness.
+
+Rules:
+- Keep the same language and the same functional behavior.
+- Preserve output and complexity class unless a clearly better variant exists.
+- Avoid the most canonical textbook structure when a valid alternative exists.
+- Rename variables and helper names naturally (not random gibberish), and vary control-flow layout.
+- Keep the explanation concise and interview-spoken, then code.
+- Do not add unsafe hacks, dead code, or unnecessary libraries.
+- Return only the rewritten answer text.`,
+        },
+        {
+            role: 'user',
+            content: `Interview question/context:\n${transcription}\n\nDraft answer to rewrite:\n${draftResponse}`,
+        },
+    ];
+}
+
+function buildCodeVerifierMessages(transcription, candidateResponse) {
+    return [
+        {
+            role: 'system',
+            content: `You are a strict code correctness verifier and minimal patcher.
+
+Task:
+- Check the candidate answer for compile/runtime correctness issues only.
+- If there are bugs (undefined variables, naming mismatch, syntax error, wrong boundary, missing required include/import), fix only the smallest affected lines.
+- Preserve the original structure, formatting style, variable naming, and control flow as much as possible.
+- If candidate already follows a platform starter scaffold (e.g., class Solution + method signature), keep that scaffold unchanged.
+- Do not add new top-level includes/imports/using unless they already exist in the candidate text.
+- Do NOT rewrite the whole solution for style, uniqueness, or preference.
+- Do NOT change algorithm/design unless the current one is objectively incorrect.
+- If no real bug/error exists, return the candidate answer unchanged.
+- Return only the final code/answer text with no explanation.`,
+        },
+        {
+            role: 'user',
+            content: `Problem context:\n${transcription}\n\nCandidate answer:\n${candidateResponse}`,
+        },
+    ];
+}
+
+async function humanizeCodeResponseWithGroq(groqApiKey, model, transcription, draftResponse) {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${groqApiKey}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            model,
+            messages: buildCodeHumanizerMessages(transcription, draftResponse),
+            stream: false,
+            temperature: 0.7,
+            top_p: 0.95,
+            max_tokens: 1024,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Groq humanizer failed (${response.status}): ${errorText}`);
+    }
+
+    const payload = await response.json();
+    return (payload?.choices?.[0]?.message?.content || '').trim();
+}
+
+async function humanizeCodeResponseWithAzure(azureApiKey, azureEndpoint, azureDeployment, transcription, draftResponse) {
+    const apiVersion = '2025-04-01-preview';
+    let baseEndpoint = azureEndpoint.replace(/\/$/, '');
+    baseEndpoint = baseEndpoint.replace(/\/openai\/(responses|deployments|completions).*$/i, '');
+    const url = `${baseEndpoint}/openai/deployments/${azureDeployment}/chat/completions?api-version=${apiVersion}`;
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'api-key': azureApiKey,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            messages: buildCodeHumanizerMessages(transcription, draftResponse),
+            stream: false,
+            temperature: 1,
+            max_completion_tokens: 1024,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Azure humanizer failed (${response.status}): ${errorText}`);
+    }
+
+    const payload = await response.json();
+    return (payload?.choices?.[0]?.message?.content || '').trim();
+}
+
+async function verifyCodeResponseWithGroq(groqApiKey, model, transcription, candidateResponse) {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${groqApiKey}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            model,
+            messages: buildCodeVerifierMessages(transcription, candidateResponse),
+            stream: false,
+            temperature: 0.2,
+            top_p: 0.9,
+            max_tokens: 1024,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Groq verifier failed (${response.status}): ${errorText}`);
+    }
+
+    const payload = await response.json();
+    return (payload?.choices?.[0]?.message?.content || '').trim();
+}
+
+async function verifyCodeResponseWithAzure(azureApiKey, azureEndpoint, azureDeployment, transcription, candidateResponse) {
+    const apiVersion = '2025-04-01-preview';
+    let baseEndpoint = azureEndpoint.replace(/\/$/, '');
+    baseEndpoint = baseEndpoint.replace(/\/openai\/(responses|deployments|completions).*$/i, '');
+    const url = `${baseEndpoint}/openai/deployments/${azureDeployment}/chat/completions?api-version=${apiVersion}`;
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'api-key': azureApiKey,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            messages: buildCodeVerifierMessages(transcription, candidateResponse),
+            stream: false,
+            temperature: 1,
+            max_completion_tokens: 1024,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Azure verifier failed (${response.status}): ${errorText}`);
+    }
+
+    const payload = await response.json();
+    return (payload?.choices?.[0]?.message?.content || '').trim();
+}
+
+async function maybeHumanizeCodeResponse(transcription, draftResponse, provider) {
+    if (!draftResponse || !isLikelyCodingPrompt(transcription, draftResponse)) {
+        return draftResponse;
+    }
+
+    try {
+        if (provider === 'groq') {
+            const groqApiKey = getEffectiveGroqApiKey();
+            const model = getModelForToday();
+            if (!groqApiKey || !model) return draftResponse;
+            const verified = await verifyCodeResponseWithGroq(groqApiKey, model, transcription, draftResponse);
+            return verified || draftResponse;
+        }
+
+        if (provider === 'azure') {
+            const azureApiKey = getEffectiveAzureApiKey();
+            const azureEndpoint = getEffectiveAzureEndpoint();
+            const azureDeployment = getEffectiveAzureDeployment();
+            if (!azureApiKey || !azureEndpoint || !azureDeployment) return draftResponse;
+            const verified = await verifyCodeResponseWithAzure(azureApiKey, azureEndpoint, azureDeployment, transcription, draftResponse);
+            return verified || draftResponse;
+        }
+    } catch (error) {
+        console.warn('Code verifier failed; using original response:', error.message);
+    }
+
+    return draftResponse;
+}
+
 async function sendToGroq(transcription) {
-    const groqApiKey = getGroqApiKey();
+    const groqApiKey = getEffectiveGroqApiKey();
     if (!groqApiKey) {
         console.log('No Groq API key configured, skipping Groq response');
         return;
@@ -331,22 +729,33 @@ async function sendToGroq(transcription) {
         }
 
         const cleanedResponse = stripThinkingTags(fullText);
+        const finalResponse = await maybeHumanizeCodeResponse(transcription, cleanedResponse, 'groq');
+        if (finalResponse && finalResponse !== cleanedResponse) {
+            sendToRenderer(isFirst ? 'new-response' : 'update-response', finalResponse);
+            isFirst = false;
+        }
         const modelKey = modelToUse.split('/').pop();
 
         const systemPromptChars = (currentSystemPrompt || 'You are a helpful assistant.').length;
         const historyChars = groqConversationHistory.reduce((sum, msg) => sum + (msg.content || '').length, 0);
         const inputChars = systemPromptChars + historyChars;
-        const outputChars = cleanedResponse.length;
+        const outputChars = finalResponse.length;
 
         incrementCharUsage('groq', modelKey, inputChars + outputChars);
 
-        if (cleanedResponse) {
+        if (finalResponse) {
             groqConversationHistory.push({
                 role: 'assistant',
-                content: cleanedResponse,
+                content: finalResponse,
             });
 
-            saveConversationTurn(transcription, cleanedResponse);
+            saveConversationTurn(transcription, finalResponse);
+            schedulePostAnswerSelfHeal({
+                transcription,
+                response: finalResponse,
+                provider: 'groq',
+                persistType: 'conversation',
+            });
         }
 
         console.log(`Groq response completed (${modelToUse})`);
@@ -361,9 +770,9 @@ async function sendToGroq(transcription) {
 const AZURE_FAST_SYSTEM_PROMPT = `You are an interview assistant helping a software professional in India. Give ready-to-speak answers in natural Indian English — direct, 3-5 spoken sentences, no bullet points, no markdown headers, no bold labels. Use connectors like "so", "basically", "see", "what happens is". For coding questions: brief explanation of approach first (2-3 sentences), then clean code. Output ONLY the words the user will speak.`;
 
 async function sendToAzure(transcription) {
-    const azureApiKey = getAzureApiKey();
-    const azureEndpoint = getAzureEndpoint();
-    const azureDeployment = getAzureDeployment();
+    const azureApiKey = getEffectiveAzureApiKey();
+    const azureEndpoint = getEffectiveAzureEndpoint();
+    const azureDeployment = getEffectiveAzureDeployment();
 
     if (!azureApiKey || !azureEndpoint || !azureDeployment) {
         console.log('Azure OpenAI not fully configured, skipping Azure response');
@@ -464,18 +873,23 @@ async function sendToAzure(transcription) {
         }
 
         const cleanedResponse = stripThinkingTags(fullText);
+        const finalResponse = await maybeHumanizeCodeResponse(transcription, cleanedResponse, 'azure');
+        if (finalResponse && finalResponse !== cleanedResponse) {
+            sendToRenderer(isFirst ? 'new-response' : 'update-response', finalResponse);
+            isFirst = false;
+        }
 
         const systemPromptChars = (currentSystemPrompt || 'You are a helpful assistant.').length;
         const historyChars = groqConversationHistory.reduce((sum, msg) => sum + (msg.content || '').length, 0);
         const inputChars = systemPromptChars + historyChars;
-        const outputChars = cleanedResponse.length;
+        const outputChars = finalResponse.length;
 
         incrementCharUsage('azure', azureDeployment, inputChars + outputChars);
 
-        if (cleanedResponse) {
+        if (finalResponse) {
             groqConversationHistory.push({
                 role: 'assistant',
-                content: cleanedResponse,
+                content: finalResponse,
             });
 
             // Keep history lean after adding the assistant reply
@@ -483,7 +897,13 @@ async function sendToAzure(transcription) {
                 groqConversationHistory = groqConversationHistory.slice(-6);
             }
 
-            saveConversationTurn(transcription, cleanedResponse);
+            saveConversationTurn(transcription, finalResponse);
+            schedulePostAnswerSelfHeal({
+                transcription,
+                response: finalResponse,
+                provider: 'azure',
+                persistType: 'conversation',
+            });
         }
 
         console.log(`Azure OpenAI response completed (${azureDeployment})`);
@@ -495,9 +915,9 @@ async function sendToAzure(transcription) {
 }
 
 async function sendImageToAzure(base64Data, prompt) {
-    const azureApiKey = getAzureApiKey();
-    const azureEndpoint = getAzureEndpoint();
-    const azureDeployment = getAzureDeployment();
+    const azureApiKey = getEffectiveAzureApiKey();
+    const azureEndpoint = getEffectiveAzureEndpoint();
+    const azureDeployment = getEffectiveAzureDeployment();
 
     if (!azureApiKey || !azureEndpoint || !azureDeployment) {
         return { success: false, error: 'Azure OpenAI not fully configured' };
@@ -511,12 +931,26 @@ async function sendImageToAzure(base64Data, prompt) {
 
         const systemInstruction = `You provide direct, minimal answers.
 
-For MCQ questions: Answer with ONLY the letter/option, nothing else.
-For code problems: Provide ONLY the specific code change needed, keep it minimal, no extra imports or complexity.
-For math: Just the final answer.
-For explanations: Keep it to 1-2 sentences max.
+    Question detection:
+    - If one problem statement is followed by Input/Output/Example/Explanation blocks, treat it as ONE question.
+    - Only split into multiple questions if there are clearly independent prompts (Q1/Q2 or unrelated stems).
 
-Match the simplicity of the question. Don't over-engineer or add unnecessary code.`;
+    For MCQ questions: Answer with ONLY the letter/option, nothing else.
+    For code problems: Provide complete working code for the primary problem.
+    For math: Just the final answer.
+    For explanations: Keep it to 1-2 sentences max.
+
+    Anti-plagiarism coding style:
+    - Avoid canonical editorial structure when a valid alternative exists.
+    - Use natural non-generic variable/helper names and slightly distinct control flow.
+    - Keep algorithmic complexity appropriate; do not regress performance.
+
+    Starter-template rules (CRITICAL):
+    - If visible code scaffold/starter exists (e.g., class Solution and method signature), preserve that exact scaffold.
+    - Do not switch to a different top-level format.
+    - Do not prepend includes/imports/using unless they are already shown in the starter.
+
+    Match the simplicity of the question. Don't over-engineer or add unnecessary code.`;
 
         console.log(`Sending image to Azure OpenAI (${azureDeployment})...`);
 
@@ -586,9 +1020,21 @@ Match the simplicity of the question. Don't over-engineer or add unnecessary cod
             }
         }
 
+        const finalResponse = await maybeHumanizeCodeResponse(prompt || '', fullText, 'azure');
+        if (finalResponse && finalResponse !== fullText) {
+            sendToRenderer(isFirst ? 'new-response' : 'update-response', finalResponse);
+            isFirst = false;
+        }
+
         console.log(`Azure image response completed (${azureDeployment})`);
-        saveScreenAnalysis(prompt, fullText, azureDeployment);
-        return { success: true, text: fullText, model: azureDeployment };
+        saveScreenAnalysis(prompt, finalResponse || fullText, azureDeployment);
+        schedulePostAnswerSelfHeal({
+            transcription: prompt || '',
+            response: finalResponse || fullText,
+            provider: 'azure',
+            persistType: 'screen',
+        });
+        return { success: true, text: finalResponse || fullText, model: azureDeployment };
     } catch (error) {
         console.error('Error sending image to Azure:', error);
         return { success: false, error: error.message };
@@ -596,7 +1042,7 @@ Match the simplicity of the question. Don't over-engineer or add unnecessary cod
 }
 
 async function sendToGemma(transcription) {
-    const apiKey = getApiKey();
+    const apiKey = getEffectiveApiKey();
     if (!apiKey) {
         console.log('No Gemini API key configured');
         return;
@@ -666,6 +1112,12 @@ async function sendToGemma(transcription) {
             }
 
             saveConversationTurn(transcription, fullText);
+            schedulePostAnswerSelfHeal({
+                transcription,
+                response: fullText,
+                provider: null,
+                persistType: 'conversation',
+            });
         }
 
         console.log('Gemma response completed');
@@ -722,12 +1174,13 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                     sendToRenderer('update-status', 'Live session connected');
                 },
                 onmessage: function (message) {
-                    // Accumulate input transcription (what interviewer said)
                     if (message.serverContent?.inputTranscription?.results) {
-                        currentTranscription += formatSpeakerResults(message.serverContent.inputTranscription.results);
+                        const results = message.serverContent.inputTranscription.results;
+                        currentTranscription += formatSpeakerResults(results);
                     } else if (message.serverContent?.inputTranscription?.text) {
                         const text = message.serverContent.inputTranscription.text;
                         if (text.trim() !== '') {
+                            // If we can't determine speaker, assume it's continuation
                             currentTranscription += text;
                         }
                     }
@@ -1030,7 +1483,7 @@ async function sendImageToGeminiHttp(base64Data, prompt) {
     // Get available model based on rate limits
     const model = getAvailableModel();
 
-    const apiKey = getApiKey();
+    const apiKey = getEffectiveApiKey();
     if (!apiKey) {
         return { success: false, error: 'No API key configured' };
     }
@@ -1051,12 +1504,26 @@ async function sendImageToGeminiHttp(base64Data, prompt) {
         // System instruction for excellent code and answers
         const systemInstruction = `You provide direct, minimal answers.
 
-For MCQ questions: Answer with ONLY the letter/option, nothing else.
-For code problems: Provide ONLY the specific code change needed, keep it minimal, no extra imports or complexity.
-For math: Just the final answer.
-For explanations: Keep it to 1-2 sentences max.
+    Question detection:
+    - If one problem statement is followed by Input/Output/Example/Explanation blocks, treat it as ONE question.
+    - Only split into multiple questions if there are clearly independent prompts (Q1/Q2 or unrelated stems).
 
-Match the simplicity of the question. Don't over-engineer or add unnecessary code.`;
+    For MCQ questions: Answer with ONLY the letter/option, nothing else.
+    For code problems: Provide complete working code for the primary problem.
+    For math: Just the final answer.
+    For explanations: Keep it to 1-2 sentences max.
+
+    Anti-plagiarism coding style:
+    - Avoid canonical editorial structure when a valid alternative exists.
+    - Use natural non-generic variable/helper names and slightly distinct control flow.
+    - Keep algorithmic complexity appropriate; do not regress performance.
+
+    Starter-template rules (CRITICAL):
+    - If visible code scaffold/starter exists (e.g., class Solution and method signature), preserve that exact scaffold.
+    - Do not switch to a different top-level format.
+    - Do not prepend includes/imports/using unless they are already shown in the starter.
+
+    Match the simplicity of the question. Don't over-engineer or add unnecessary code.`;
 
         console.log(`Sending image to ${model} (streaming)...`);
         const response = await ai.models.generateContentStream({
@@ -1083,12 +1550,24 @@ Match the simplicity of the question. Don't over-engineer or add unnecessary cod
             }
         }
 
+        const finalResponse = await maybeHumanizeCodeResponse(prompt || '', fullText, 'azure');
+        if (finalResponse && finalResponse !== fullText) {
+            sendToRenderer(isFirst ? 'new-response' : 'update-response', finalResponse);
+            isFirst = false;
+        }
+
         console.log(`Image response completed from ${model}`);
 
         // Save screen analysis to history
-        saveScreenAnalysis(prompt, fullText, model);
+        saveScreenAnalysis(prompt, finalResponse || fullText, model);
+        schedulePostAnswerSelfHeal({
+            transcription: prompt || '',
+            response: finalResponse || fullText,
+            provider: null,
+            persistType: 'screen',
+        });
 
-        return { success: true, text: fullText, model: model };
+        return { success: true, text: finalResponse || fullText, model: model };
     } catch (error) {
         console.error('Error sending image to Gemini HTTP:', error);
         return { success: false, error: error.message };
@@ -1098,6 +1577,24 @@ Match the simplicity of the question. Don't over-engineer or add unnecessary cod
 function setupGeminiIpcHandlers(geminiSessionRef) {
     // Store the geminiSessionRef globally for reconnection access
     global.geminiSessionRef = geminiSessionRef;
+
+    ipcMain.handle('resolve-provider-secrets', async (event, accessToken, options = {}) => {
+        try {
+            const result = await resolveProviderSecrets(accessToken, options);
+            return result;
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('clear-runtime-provider-secrets', async () => {
+        try {
+            clearRuntimeProviderSecrets();
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
 
     ipcMain.handle('initialize-cloud', async (event, token, profile, userContext) => {
         try {
@@ -1121,12 +1618,38 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     ipcMain.handle('initialize-gemini', async (event, apiKey, customPrompt, profile = 'interview', language = 'en-US') => {
         currentProviderMode = 'byok';
 
+        try {
+            await resolveProviderSecrets(apiKey, { consume: true });
+        } catch (error) {
+            console.error('[Init] Failed to resolve provider secrets:', error.message);
+            sendToRenderer('update-status', 'Invalid access token or Supabase unavailable');
+            return false;
+        }
+
+        if (hasManagedCloudToken()) {
+            try {
+                currentProviderMode = 'cloud';
+                initializeNewSession(profile);
+                setOnTurnComplete((transcription, response) => {
+                    saveConversationTurn(transcription, response);
+                });
+                sendToRenderer('session-initializing', true);
+                await connectCloud(runtimeProviderSecrets.cloudToken, profile, customPrompt || '');
+                sendToRenderer('session-initializing', false);
+                return true;
+            } catch (error) {
+                console.error('[Init] Managed cloud token failed, falling back to provider keys:', error);
+                currentProviderMode = 'byok';
+                sendToRenderer('session-initializing', false);
+            }
+        }
+
         // If Azure keys are configured, use Groq Whisper STT + Azure OpenAI — skip Gemini Live entirely
         if (hasAzureKey()) {
-            const groqKey = getGroqApiKey();
+            const groqKey = getEffectiveGroqApiKey();
             if (!groqKey) {
                 console.error('[Init] Azure mode requires a Groq API key for STT — add it in settings');
-                sendToRenderer('update-status', 'Add Groq API key for STT');
+                sendToRenderer('update-status', 'Groq STT key not configured in Supabase');
                 return false;
             }
             currentProfile = profile;
@@ -1147,7 +1670,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
 
         // Fallback: use Gemini Live for STT when no Azure keys
-        const session = await initializeGeminiSession(apiKey, customPrompt, profile, language);
+        const session = await initializeGeminiSession(getEffectiveApiKey(), customPrompt, profile, language);
         if (session) {
             geminiSessionRef.current = session;
             return true;
@@ -1352,7 +1875,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             }
 
             // Gemma (Gemini HTTP) — works without a live session
-            if (getApiKey()) {
+            if (getEffectiveApiKey()) {
                 sendToGemma(text.trim());
                 return { success: true };
             }
@@ -1399,6 +1922,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     ipcMain.handle('close-session', async event => {
         try {
             stopMacOSAudioCapture();
+            clearRuntimeProviderSecrets();
 
             if (currentProviderMode === 'cloud') {
                 closeCloud();
@@ -1483,4 +2007,5 @@ module.exports = {
     sendImageToGeminiHttp,
     setupGeminiIpcHandlers,
     formatSpeakerResults,
+    clearRuntimeProviderSecrets,
 };

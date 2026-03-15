@@ -97,7 +97,43 @@ export class HistoryView extends LitElement {
             .detail-top {
                 display: flex;
                 align-items: center;
+                justify-content: space-between;
                 gap: var(--space-sm);
+            }
+
+            .detail-main {
+                display: flex;
+                align-items: center;
+                gap: var(--space-sm);
+                min-width: 0;
+            }
+
+            .detail-actions {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex-shrink: 0;
+            }
+
+            .action-btn {
+                border: 1px solid var(--border);
+                border-radius: var(--radius-sm);
+                background: var(--bg-elevated);
+                color: var(--text-secondary);
+                padding: 5px 10px;
+                cursor: pointer;
+                font-size: var(--font-size-xs);
+            }
+
+            .action-btn:hover {
+                color: var(--text-primary);
+                border-color: var(--text-secondary);
+            }
+
+            .action-status {
+                color: var(--text-muted);
+                font-size: var(--font-size-xs);
+                min-height: 16px;
             }
 
             .back-btn {
@@ -122,6 +158,9 @@ export class HistoryView extends LitElement {
             .detail-info {
                 color: var(--text-secondary);
                 font-size: var(--font-size-sm);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
 
             .tab-row {
@@ -265,6 +304,7 @@ export class HistoryView extends LitElement {
         loading: { type: Boolean },
         activeTab: { type: String },
         searchQuery: { type: String },
+        actionStatus: { type: String },
     };
 
     constructor() {
@@ -275,6 +315,8 @@ export class HistoryView extends LitElement {
         this.loading = true;
         this.activeTab = 'conversation';
         this.searchQuery = '';
+        this.actionStatus = '';
+        this._actionStatusClearTimer = null;
         this.loadSessions();
     }
 
@@ -309,6 +351,15 @@ export class HistoryView extends LitElement {
         this.selectedSession = null;
         this.selectedSessionId = null;
         this.activeTab = 'conversation';
+        this._setActionStatus('');
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        if (this._actionStatusClearTimer) {
+            clearTimeout(this._actionStatusClearTimer);
+            this._actionStatusClearTimer = null;
+        }
     }
 
     handleSearchInput(e) {
@@ -378,6 +429,133 @@ export class HistoryView extends LitElement {
             if (turn.ai_response) messages.push({ type: 'ai', content: turn.ai_response, timestamp: turn.timestamp });
         });
         return messages;
+    }
+
+    _setActionStatus(message) {
+        this.actionStatus = message;
+        if (this._actionStatusClearTimer) {
+            clearTimeout(this._actionStatusClearTimer);
+            this._actionStatusClearTimer = null;
+        }
+        if (message) {
+            this._actionStatusClearTimer = setTimeout(() => {
+                this.actionStatus = '';
+                this.requestUpdate();
+            }, 3000);
+        }
+        this.requestUpdate();
+    }
+
+    _buildExportText() {
+        if (!this.selectedSession) return '';
+
+        const lines = [];
+        const profileLabel = this._getProfileLabel(this.selectedSession);
+        const created = `${this.formatDate(this.selectedSession.createdAt)} ${this.formatTime(this.selectedSession.createdAt)}`;
+        lines.push(`Session: ${profileLabel}`);
+        lines.push(`Created: ${created}`);
+        lines.push('');
+
+        if (this.activeTab === 'conversation') {
+            const messages = this.collectConversation(this.selectedSession);
+            lines.push('=== Conversation ===');
+            if (!messages.length) {
+                lines.push('No conversation data.');
+            } else {
+                messages.forEach(msg => {
+                    const role = msg.type === 'user' ? 'Question' : 'Answer';
+                    lines.push(`[${this.formatTime(msg.timestamp)}] ${role}:`);
+                    lines.push(msg.content || '');
+                    lines.push('');
+                });
+            }
+            return lines.join('\n').trim();
+        }
+
+        if (this.activeTab === 'screen') {
+            const screen = this.selectedSession.screenAnalysisHistory || [];
+            lines.push('=== Screen Analysis ===');
+            if (!screen.length) {
+                lines.push('No screen analysis data.');
+            } else {
+                screen.forEach(entry => {
+                    lines.push(`[${this.formatTime(entry.timestamp)}]`);
+                    lines.push(entry.response || '');
+                    lines.push('');
+                });
+            }
+            return lines.join('\n').trim();
+        }
+
+        lines.push('=== Context ===');
+        lines.push(`Profile: ${profileLabel}`);
+        lines.push('');
+        lines.push('Prompt:');
+        lines.push(this.selectedSession.customPrompt || '(none)');
+        return lines.join('\n').trim();
+    }
+
+    _getExportFileName() {
+        const label = (this._getProfileLabel(this.selectedSession) || 'session')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)/g, '');
+        const tab = this.activeTab || 'conversation';
+        const sessionId = this.selectedSessionId || Date.now().toString();
+        return `${label || 'session'}-${tab}-${sessionId}.txt`;
+    }
+
+    async _copyCurrentTab() {
+        const text = this._buildExportText();
+        if (!text) {
+            this._setActionStatus('Nothing to copy.');
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(text);
+            this._setActionStatus('Copied to clipboard.');
+        } catch (error) {
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.setAttribute('readonly', '');
+                textarea.style.position = 'fixed';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                const success = document.execCommand('copy');
+                document.body.removeChild(textarea);
+
+                if (success) {
+                    this._setActionStatus('Copied to clipboard.');
+                } else {
+                    this._setActionStatus('Copy failed. Use Save instead.');
+                }
+            } catch (fallbackError) {
+                this._setActionStatus('Copy failed. Use Save instead.');
+            }
+        }
+    }
+
+    async _saveCurrentTab() {
+        const text = this._buildExportText();
+        if (!text) {
+            this._setActionStatus('Nothing to save.');
+            return;
+        }
+
+        const defaultName = this._getExportFileName();
+        try {
+            const result = await cheatingDaddy.saveTextFile(text, defaultName);
+            if (result?.success) {
+                this._setActionStatus('Saved to file.');
+            } else if (!result?.canceled) {
+                this._setActionStatus('Save failed.');
+            }
+        } catch (error) {
+            this._setActionStatus('Save failed.');
+        }
     }
 
     renderTabContent() {
@@ -473,13 +651,20 @@ export class HistoryView extends LitElement {
         return html`
             <div class="page-title">Session Detail</div>
             <div class="detail-top">
-                <button class="back-btn" @click=${this.closeSession}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="15 18 9 12 15 6"/>
-                    </svg>
-                </button>
-                <span class="detail-info">${this._getProfileLabel(this.selectedSession)} · ${this.formatDate(this.selectedSession.createdAt)} · ${this.formatTime(this.selectedSession.createdAt)}</span>
+                <div class="detail-main">
+                    <button class="back-btn" @click=${this.closeSession}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                    </button>
+                    <span class="detail-info">${this._getProfileLabel(this.selectedSession)} · ${this.formatDate(this.selectedSession.createdAt)} · ${this.formatTime(this.selectedSession.createdAt)}</span>
+                </div>
+                <div class="detail-actions">
+                    <button class="action-btn" @click=${this._copyCurrentTab}>Copy</button>
+                    <button class="action-btn" @click=${this._saveCurrentTab}>Save</button>
+                </div>
             </div>
+            ${this.actionStatus ? html`<div class="action-status">${this.actionStatus}</div>` : ''}
             <div class="tab-row">
                 <button class="tab-btn ${this.activeTab === 'conversation' ? 'active' : ''}" @click=${() => { this.activeTab = 'conversation'; }}>
                     Conversation (${conversationCount})

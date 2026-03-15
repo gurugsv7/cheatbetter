@@ -17,6 +17,9 @@ const DEFAULT_CREDENTIALS = {
     azureApiKey: '',
     azureEndpoint: '',
     azureDeployment: '',
+    cloudToken: '',
+    supabaseUrl: '',
+    supabaseAnonKey: '',
 };
 
 const DEFAULT_PREFERENCES = {
@@ -33,6 +36,7 @@ const DEFAULT_PREFERENCES = {
     ollamaHost: 'http://127.0.0.1:11434',
     ollamaModel: 'llama3.1',
     whisperModel: 'Xenova/whisper-small',
+    skipVoiceCalibration: false,
 };
 
 const DEFAULT_KEYBINDS = null; // null means use system defaults
@@ -233,6 +237,16 @@ function getAzureDeployment() {
 
 function setAzureDeployment(azureDeployment) {
     return setCredentials({ azureDeployment });
+}
+
+function clearProviderSecrets() {
+    return setCredentials({
+        apiKey: '',
+        groqApiKey: '',
+        azureApiKey: '',
+        azureEndpoint: '',
+        azureDeployment: '',
+    });
 }
 
 // ============ PREFERENCES ============
@@ -563,6 +577,7 @@ module.exports = {
     setAzureEndpoint,
     getAzureDeployment,
     setAzureDeployment,
+    clearProviderSecrets,
 
     // Preferences
     getPreferences,

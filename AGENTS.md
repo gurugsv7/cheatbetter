@@ -84,17 +84,31 @@ uses Electron. Key goals are:
   sending to the AI service.
 - **Improved Note Handling** – store transcriptions locally and associate them
   with meeting notes, similar to `transcriber`'s note management system.
+- **SA Round Simulator** – dedicated Data Structure & Algorithm (DSA) interview
+  practice tool where students explain their approach out loud while typing code,
+  with real-time voice analysis and post-round report cards on communication,
+  approach quality, time management, and panic recovery.
 - **Testing Infrastructure** – adopt Jest and React Testing Library (if React is
-  introduced) to cover audio capture and transcription modules.
+  introduced) to cover audio capture and transcription modules, including SA Round
+  metrics calculation.
 
 ### TODO
 
 1. Research and prototype local transcription using `whisper.cpp`.
 2. Add dual‑stream audio capture logic for cross‑platform support.
 3. Investigate speaker diarization options and integrate when feasible.
-4. Plan a migration path toward a proper testing setup (Jest or similar).
-5. Document security considerations for audio storage and processing.
-6. Rebuild the entire UI using shadcn components.
+4. Build DSA problem database (~100–200 problems) keyed by company and difficulty
+   tier.
+5. Implement real-time voice analysis for problem clarification, approach
+   explanation, filler words, complexity discussion, and panic recovery detection.
+6. Design and build SA Round Simulator UI: role selection, problem display,
+   live code editor, timer, and report card views.
+7. Implement post-round report generation with communication, approach structure,
+   time management, and panic recovery scores.
+8. Plan a migration path toward a proper testing setup (Jest or similar).
+9. Document security considerations for audio storage and processing.
+10. Rebuild the entire UI using shadcn components.
+11. Integrate session playback and code review tools for post-round feedback.
 
 These plans are aspirational; implement them gradually while keeping the app
 functional.
@@ -123,8 +137,50 @@ When implementing transcription features borrow the following rules from
 - **Transparency** – document what is stored and where.
 - **Minimal data** – only persist what is required for functionality.
 
+## SA Round Simulator implementation guide
+
+When building the SA Round Simulator feature, follow these principles:
+
+### Audio analysis for coding rounds
+- **Clarification detection** – look for questions (e.g., "What if...", "Can I assume...")
+  before solution design begins; flag if student jumps straight to coding.
+- **Approach verbalization** – detect explanation phase ("I'll use a hash map
+  because...") before or concurrent with code writing.
+- **Filler words** – count "um", "uh", "like", "you know" as indicators of
+  thinking time; correlate with pause duration for confusion signals.
+- **Complexity articulation** – extract time/space complexity statements via NLP;
+  cross-check against actual solution if code analysis is available.
+- **Panic indicators** – detect tone change, rapid filler word increases, explicit
+  statements like "I'm stuck" or "I don't know"; measure recovery (pivot to
+  brute force, ask for hints, refocus).
+
+### Problem database strategy
+- Curate problems from real company interview reports (Blind, LeetCode Discuss,
+  Glassdoor).
+- Tag each problem: company, role (SDE, Data Engineer, etc.), difficulty tier
+  (Easy/Medium/Hard), and year added.
+- Avoid arbitrary LeetCode classifications; validate difficulty by cross-referencing
+  student success rates and company feedback.
+- Rotate problems regularly and gather feedback from users on calibration accuracy.
+
+### Report card design
+- Match the styling and layout of existing behavioral interview report cards.
+- Include quantitative metrics (score 0–100 for each dimension) and qualitative
+  feedback (e.g., "Strong problem clarification; consider mentioning edge cases").
+- Provide actionable next-step suggestions (e.g., "Practice explaining your
+  complexity analysis before coding").
+- Allow students to review session transcript and recorded audio for self-review.
+
+### Privacy and data handling
+- Store audio recordings and transcripts locally by default.
+- Require explicit user consent before uploading session data to cloud.
+- Provide one-click session deletion with clear retention defaults (e.g., delete
+  after 30 days by default).
+- Never train models on user-generated code or audio without explicit permission.
+
 ## LLM plans
 
 There are placeholder files for future LLM integration (e.g. Qwen models via
 `llama.cpp`). Continue development after the core transcription pipeline is
-stable and ensure tests cover this new functionality.
+stable and ensure tests cover this new functionality. SA Round Simulator should
+use the same LLM provider abstraction as the main overlay for consistency.

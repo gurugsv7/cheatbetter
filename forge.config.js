@@ -1,6 +1,10 @@
 const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 
+const windowsCertificateFile = process.env.WIN_CSC_LINK;
+const windowsCertificatePassword = process.env.WIN_CSC_KEY_PASSWORD;
+const remoteReleases = process.env.SQUIRREL_REMOTE_RELEASES;
+
 module.exports = {
     packagerConfig: {
         asar: {
@@ -9,6 +13,15 @@ module.exports = {
         extraResource: ['./src/assets/SystemAudioDump'],
         name: 'GSV',
         icon: 'src/assets/logo',
+        ...(windowsCertificateFile
+            ? {
+                windowsSign: {
+                    certificateFile: windowsCertificateFile,
+                    certificatePassword: windowsCertificatePassword || undefined,
+                    timestampServer: process.env.WIN_TIMESTAMP_SERVER || 'http://timestamp.digicert.com',
+                },
+            }
+            : {}),
         // use `security find-identity -v -p codesigning` to find your identity
         // for macos signing
         // also fuck apple
@@ -37,7 +50,12 @@ module.exports = {
                 shortcutName: 'GSV',
                 createDesktopShortcut: true,
                 createStartMenuShortcut: true,
+                ...(remoteReleases ? { remoteReleases } : {}),
             },
+        },
+        {
+            name: '@electron-forge/maker-zip',
+            platforms: ['win32'],
         },
         {
             name: '@electron-forge/maker-dmg',

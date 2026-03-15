@@ -315,13 +315,17 @@ export class CalibrationView extends LitElement {
             /* ── Action buttons ── */
             .calibration-actions {
                 display: flex;
+                justify-content: center;
+                flex-wrap: wrap;
                 gap: var(--space-sm);
                 width: 100%;
                 max-width: 520px;
             }
 
             .cal-btn {
-                flex: 1;
+                -webkit-app-region: no-drag;
+                flex: 0 1 auto;
+                min-width: 180px;
                 padding: 10px var(--space-md);
                 border-radius: var(--radius-sm);
                 font-size: var(--font-size-sm);
@@ -363,8 +367,15 @@ export class CalibrationView extends LitElement {
 
             .cal-btn.skip {
                 background: transparent;
-                border-color: rgba(0,212,255,0.1);
-                color: rgba(0,212,255,0.3);
+                border-color: rgba(0,212,255,0.22);
+                color: rgba(0,212,255,0.6);
+            }
+
+            .cal-btn.skip:hover {
+                border-color: rgba(0,212,255,0.55);
+                background: rgba(0,212,255,0.08);
+                color: #00d4ff;
+                box-shadow: 0 0 12px rgba(0,212,255,0.14);
             }
 
             /* ── Completion card ── */
@@ -420,8 +431,9 @@ export class CalibrationView extends LitElement {
 
             /* ── Typed input fallback ── */
             .typed-input {
-                width: 100%;
-                max-width: 520px;
+                -webkit-app-region: no-drag;
+                width: min(100%, 420px);
+                max-width: 420px;
                 background: rgba(0,10,15,0.85);
                 color: rgba(0,212,255,0.85);
                 border: 1px solid rgba(0,212,255,0.2);
@@ -445,6 +457,7 @@ export class CalibrationView extends LitElement {
             }
 
             .mode-toggle {
+                -webkit-app-region: no-drag;
                 font-size: var(--font-size-xs);
                 color: rgba(0,212,255,0.6);
                 cursor: pointer;
@@ -911,8 +924,11 @@ export class CalibrationView extends LitElement {
      * Tries: 1) Groq Whisper  2) Azure Speech REST  3) returns empty
      */
     async _transcribeAudio(audioBlob) {
+        const resolved = await window.cheatingDaddy.getProviderSecrets().catch(() => ({ success: false }));
+        const secrets = resolved?.success ? (resolved.data || {}) : {};
+
         // Try Groq Whisper first (fast, free, reliable)
-        const groqKey = await window.cheatingDaddy.storage.getGroqApiKey();
+        const groqKey = secrets.groqApiKey || '';
         if (groqKey) {
             try {
                 const text = await this._transcribeWithGroqWhisper(audioBlob, groqKey);
@@ -924,8 +940,8 @@ export class CalibrationView extends LitElement {
 
         // Try Azure Speech REST API
         try {
-            const azureKey = await window.cheatingDaddy.storage.getAzureApiKey();
-            const azureEndpoint = await window.cheatingDaddy.storage.getAzureEndpoint();
+            const azureKey = secrets.azureApiKey || '';
+            const azureEndpoint = secrets.azureEndpoint || '';
             if (azureKey && azureEndpoint) {
                 const text = await this._transcribeWithAzureSpeech(audioBlob, azureKey, azureEndpoint);
                 if (text) return text;
@@ -1083,11 +1099,14 @@ Respond with ONLY the JSON object, no explanation.`;
     }
 
     async _callLLMForAnalysis(prompt) {
+        const resolved = await window.cheatingDaddy.getProviderSecrets().catch(() => ({ success: false }));
+        const secrets = resolved?.success ? (resolved.data || {}) : {};
+
         // 1) Azure OpenAI
         try {
-            const azureKey = await window.cheatingDaddy.storage.getAzureApiKey();
-            const azureEndpoint = await window.cheatingDaddy.storage.getAzureEndpoint();
-            const azureDeployment = await window.cheatingDaddy.storage.getAzureDeployment();
+            const azureKey = secrets.azureApiKey || '';
+            const azureEndpoint = secrets.azureEndpoint || '';
+            const azureDeployment = secrets.azureDeployment || '';
 
             if (azureKey && azureEndpoint && azureDeployment) {
                 console.log('CalibrationView: using Azure for voice analysis');
@@ -1105,7 +1124,7 @@ Respond with ONLY the JSON object, no explanation.`;
 
         // 2) Gemini
         try {
-            const geminiKey = await window.cheatingDaddy.storage.getApiKey();
+            const geminiKey = secrets.geminiApiKey || '';
             if (geminiKey) {
                 console.log('CalibrationView: using Gemini for voice analysis');
                 const result = await this._analyzeWithGemini(prompt, geminiKey);
@@ -1117,7 +1136,7 @@ Respond with ONLY the JSON object, no explanation.`;
 
         // 3) Groq
         try {
-            const groqKey = await window.cheatingDaddy.storage.getGroqApiKey();
+            const groqKey = secrets.groqApiKey || '';
             if (groqKey) {
                 console.log('CalibrationView: using Groq for voice analysis');
                 const result = await this._analyzeWithGroq(prompt, groqKey);

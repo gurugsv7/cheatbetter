@@ -495,6 +495,7 @@ export class CheatingDaddyApp extends LitElement {
         _awaitingScreenAnalysis: { state: true },
         _errorContent: { state: true },
         _hasVoiceProfile: { state: true },
+        _calibrationSkipped: { state: true },
     };
 
     constructor() {
@@ -524,6 +525,7 @@ export class CheatingDaddyApp extends LitElement {
         this._awaitingScreenAnalysis = false;
         this._errorContent = '';
         this._hasVoiceProfile = false;
+        this._calibrationSkipped = false;
         this._layoutRepositioned = false;
 
         this._loadFromStorage();
@@ -568,6 +570,7 @@ export class CheatingDaddyApp extends LitElement {
             this.selectedImageQuality = prefs.selectedImageQuality || 'medium';
             this.layoutMode = config.layout || 'normal';
             this._hasVoiceProfile = !!voiceProfile;
+            this._calibrationSkipped = !!prefs.skipVoiceCalibration;
 
             this._storageLoaded = true;
             this.requestUpdate();
@@ -653,6 +656,7 @@ export class CheatingDaddyApp extends LitElement {
         if (wasOnLatest || this.currentResponseIndex === -1) {
             this.currentResponseIndex = this.responses.length - 1;
         }
+        
         this._awaitingNewResponse = false;
         this.requestUpdate();
     }
@@ -711,6 +715,9 @@ export class CheatingDaddyApp extends LitElement {
                 const { ipcRenderer } = window.require('electron');
                 await ipcRenderer.invoke('close-session');
             }
+            if (window.cheatingDaddy?.clearSessionProviderSecrets) {
+                await window.cheatingDaddy.clearSessionProviderSecrets();
+            }
             this.sessionActive = false;
             this._stopTimer();
             this.currentView = 'main';
@@ -743,7 +750,7 @@ export class CheatingDaddyApp extends LitElement {
 
     async handleStart() {
         // If no voice profile, go to calibration first
-        if (!this._hasVoiceProfile) {
+        if (!this._hasVoiceProfile && !this._calibrationSkipped) {
             this.currentView = 'calibration';
             this.requestUpdate();
             return;
@@ -757,63 +764,82 @@ export class CheatingDaddyApp extends LitElement {
             await cheatingDaddy.storage.saveVoiceProfile(voiceProfile);
             this._hasVoiceProfile = true;
         }
+        this._calibrationSkipped = false;
+        await cheatingDaddy.storage.updatePreference('skipVoiceCalibration', false);
         // Proceed to start session
         await this._startSession();
     }
 
-    handleCalibrationSkip() {
-        // Skip calibration, start session without voice profile
-        this._startSession();
+    async handleCalibrationSkip() {
+        this._calibrationSkipped = true;
+        cheatingDaddy.storage.updatePreference('skipVoiceCalibration', true).catch((error) => {
+            console.warn('Failed to persist skipVoiceCalibration preference:', error);
+        });
+        // Navigate to main first so main-view is in the DOM before _startSession()
+        // tries to show an API key error on it
+        this.currentView = 'main';
+        this.requestUpdate();
+        // Allow the main view to render before attempting to start the session
+        setTimeout(() => this._startSession(), 0);
     }
 
     async handleResetVoiceProfile() {
         await cheatingDaddy.storage.deleteVoiceProfile();
         this._hasVoiceProfile = false;
+        this._calibrationSkipped = false;
+        await cheatingDaddy.storage.updatePreference('skipVoiceCalibration', false);
         this.requestUpdate();
+    }
+
+    _showMainViewTokenError(message) {
+        const mainView = this.shadowRoot.querySelector('main-view');
+        if (mainView && mainView.triggerApiKeyError) {
+            mainView.triggerApiKeyError(message);
+        }
     }
 
     async _startSession() {
         const prefs = await cheatingDaddy.storage.getPreferences();
-        const providerMode = prefs.providerMode || 'cloud';
+        const creds = await cheatingDaddy.storage.getCredentials();
+        const accessToken = (creds.cloudToken || '').trim();
+
+        let providerMode = prefs.providerMode || 'byok';
+        if (providerMode === 'cloud' && accessToken.startsWith('SKI-')) {
+            providerMode = 'byok';
+            cheatingDaddy.storage.updatePreference('providerMode', 'byok').catch(() => {});
+        }
 
         if (providerMode === 'cloud') {
-            const creds = await cheatingDaddy.storage.getCredentials();
             if (!creds.cloudToken || creds.cloudToken.trim() === '') {
-                const mainView = this.shadowRoot.querySelector('main-view');
-                if (mainView && mainView.triggerApiKeyError) {
-                    mainView.triggerApiKeyError();
-                }
+                this._showMainViewTokenError('Access token is required.');
                 return;
             }
 
             const success = await cheatingDaddy.initializeCloud(this.selectedProfile);
             if (!success) {
-                const mainView = this.shadowRoot.querySelector('main-view');
-                if (mainView && mainView.triggerApiKeyError) {
-                    mainView.triggerApiKeyError();
-                }
+                this._showMainViewTokenError('Unable to start cloud session. Check your access token.');
                 return;
             }
         } else if (providerMode === 'local') {
             const success = await cheatingDaddy.initializeLocal(this.selectedProfile);
             if (!success) {
-                const mainView = this.shadowRoot.querySelector('main-view');
-                if (mainView && mainView.triggerApiKeyError) {
-                    mainView.triggerApiKeyError();
-                }
+                this._showMainViewTokenError('Local AI failed to initialize.');
                 return;
             }
         } else {
-            const apiKey = await cheatingDaddy.storage.getApiKey();
-            if (!apiKey || apiKey === '') {
-                const mainView = this.shadowRoot.querySelector('main-view');
-                if (mainView && mainView.triggerApiKeyError) {
-                    mainView.triggerApiKeyError();
-                }
+            const creds = await cheatingDaddy.storage.getCredentials();
+            const accessToken = creds.cloudToken || '';
+            if (!accessToken || accessToken.trim() === '') {
+                this._showMainViewTokenError('Access token is required.');
                 return;
             }
 
-            await cheatingDaddy.initializeGemini(this.selectedProfile, this.selectedLanguage);
+            const success = await cheatingDaddy.initializeGemini(this.selectedProfile, this.selectedLanguage);
+            if (!success) {
+                const initError = typeof cheatingDaddy.getLastInitError === 'function' ? cheatingDaddy.getLastInitError() : '';
+                this._showMainViewTokenError(initError || 'Access token is invalid or expired.');
+                return;
+            }
         }
 
         cheatingDaddy.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
@@ -1121,6 +1147,7 @@ export class CheatingDaddyApp extends LitElement {
         }
 
         const isLive = this._isLiveMode();
+        const showResizeHandles = this.currentView === 'assistant';
 
         return html`
             <div class="app-shell">
@@ -1144,7 +1171,7 @@ export class CheatingDaddyApp extends LitElement {
                     ${isLive ? this.renderLiveBar() : ''}
                     <div class="content-inner ${isLive ? 'live' : ''}">
                         ${this.renderCurrentView()}
-                        <resize-handles></resize-handles>
+                        ${showResizeHandles ? html`<resize-handles></resize-handles>` : ''}
                     </div>
                 </div>
             </div>

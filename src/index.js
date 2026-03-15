@@ -6,8 +6,15 @@ const { app, BrowserWindow, shell, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
-const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
+const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer, clearRuntimeProviderSecrets } = require('./utils/gemini');
 const storage = require('./storage');
+
+let autoUpdater = null;
+try {
+    ({ autoUpdater } = require('electron-updater'));
+} catch (error) {
+    autoUpdater = null;
+}
 
 const geminiSessionRef = { current: null };
 let mainWindow = null;
@@ -15,6 +22,39 @@ let mainWindow = null;
 function createMainWindow() {
     mainWindow = createWindow(sendToRenderer, geminiSessionRef);
     return mainWindow;
+}
+
+function setupAutoUpdates() {
+    if (!app.isPackaged || !autoUpdater) {
+        return;
+    }
+
+    const updateFeedUrl = process.env.AUTO_UPDATE_URL;
+    if (!updateFeedUrl) {
+        return;
+    }
+
+    try {
+        autoUpdater.autoDownload = true;
+        autoUpdater.autoInstallOnAppQuit = true;
+        autoUpdater.setFeedURL({ provider: 'generic', url: updateFeedUrl });
+
+        autoUpdater.on('checking-for-update', () => sendToRenderer('update-status', 'Checking for updates...'));
+        autoUpdater.on('update-available', () => sendToRenderer('update-status', 'Update available. Downloading...'));
+        autoUpdater.on('update-not-available', () => sendToRenderer('update-status', 'App up to date'));
+        autoUpdater.on('download-progress', () => sendToRenderer('update-status', 'Downloading update...'));
+        autoUpdater.on('update-downloaded', () => sendToRenderer('update-status', 'Update downloaded. Will install on quit.'));
+        autoUpdater.on('error', err => {
+            console.error('Auto-update error:', err);
+            sendToRenderer('update-status', 'Auto-update failed');
+        });
+
+        autoUpdater.checkForUpdates().catch(err => {
+            console.error('Auto-update check failed:', err);
+        });
+    } catch (error) {
+        console.error('Error configuring auto updates:', error);
+    }
 }
 
 app.whenReady().then(async () => {
@@ -31,6 +71,7 @@ app.whenReady().then(async () => {
     setupGeminiIpcHandlers(geminiSessionRef);
     setupStorageIpcHandlers();
     setupGeneralIpcHandlers();
+    setupAutoUpdates();
 });
 
 app.on('window-all-closed', () => {
@@ -42,6 +83,15 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
     stopMacOSAudioCapture();
+    clearRuntimeProviderSecrets();
+    try {
+        const creds = storage.getCredentials();
+        if ((creds.cloudToken || '').trim()) {
+            storage.clearProviderSecrets();
+        }
+    } catch (error) {
+        console.error('Failed to clear provider secrets on quit:', error);
+    }
 });
 
 app.on('activate', () => {
@@ -97,6 +147,16 @@ function setupStorageIpcHandlers() {
             return { success: true };
         } catch (error) {
             console.error('Error setting credentials:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:clear-provider-secrets', async () => {
+        try {
+            storage.clearProviderSecrets();
+            return { success: true };
+        } catch (error) {
+            console.error('Error clearing provider secrets:', error);
             return { success: false, error: error.message };
         }
     });
@@ -408,5 +468,34 @@ function setupGeneralIpcHandlers() {
             return { text: result.text, fileName: path.basename(filePath) };
         }
         throw new Error('Unsupported file type. Please use PDF or DOCX.');
+    });
+
+    ipcMain.handle('save-text-file', async (event, payload = {}) => {
+        try {
+            const text = typeof payload.text === 'string' ? payload.text : '';
+            const defaultName = typeof payload.defaultName === 'string' && payload.defaultName.trim()
+                ? payload.defaultName.trim()
+                : 'session-export.txt';
+
+            const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+                title: 'Save Session Export',
+                defaultPath: defaultName,
+                filters: [
+                    { name: 'Text Files', extensions: ['txt'] },
+                    { name: 'All Files', extensions: ['*'] },
+                ],
+                properties: ['createDirectory', 'showOverwriteConfirmation'],
+            });
+
+            if (canceled || !filePath) {
+                return { success: false, canceled: true };
+            }
+
+            fs.writeFileSync(filePath, text, 'utf8');
+            return { success: true, filePath };
+        } catch (error) {
+            console.error('Error saving text file:', error);
+            return { success: false, error: error.message };
+        }
     });
 }

@@ -15,6 +15,11 @@ let hiddenVideo = null;
 let offscreenCanvas = null;
 let offscreenContext = null;
 let currentImageQuality = 'medium'; // Store current image quality for manual screenshots
+let providerSecretsCache = null;
+let providerSecretsToken = '';
+let providerSecretsResolvedAt = 0;
+const PROVIDER_SECRETS_CACHE_TTL_MS = 30 * 60 * 1000;
+let lastInitErrorMessage = '';
 
 const isLinux = process.platform === 'linux';
 const isMacOS = process.platform === 'darwin';
@@ -41,6 +46,23 @@ const storage = {
     },
     async setCredentials(credentials) {
         return ipcRenderer.invoke('storage:set-credentials', credentials);
+    },
+    async clearProviderSecrets() {
+        providerSecretsCache = null;
+        providerSecretsToken = '';
+        providerSecretsResolvedAt = 0;
+        return ipcRenderer.invoke('storage:clear-provider-secrets');
+    },
+    async getAccessToken() {
+        const creds = await this.getCredentials();
+        return creds.cloudToken || '';
+    },
+    async setAccessToken(accessToken) {
+        const creds = await this.getCredentials();
+        providerSecretsCache = null;
+        providerSecretsToken = '';
+        providerSecretsResolvedAt = 0;
+        return this.setCredentials({ ...creds, cloudToken: accessToken });
     },
     async getApiKey() {
         const result = await ipcRenderer.invoke('storage:get-api-key');
@@ -184,18 +206,98 @@ function buildCombinedContext(prefs) {
 }
 
 async function initializeGemini(profile = 'interview', language = 'en-US') {
-    const apiKey = await storage.getApiKey();
-    const azureKey = await storage.getAzureApiKey();
-    // Trigger session start when either Gemini OR Azure key is configured
-    if (apiKey || azureKey) {
-        const prefs = await storage.getPreferences();
-        const success = await ipcRenderer.invoke('initialize-gemini', apiKey || '', buildCombinedContext(prefs), profile, language);
-        if (success) {
-            cheatingDaddy.setStatus('Live');
-        } else {
-            cheatingDaddy.setStatus('error');
-        }
+    const accessToken = await storage.getAccessToken();
+    if (!accessToken || !accessToken.trim()) {
+        lastInitErrorMessage = 'Access token is required.';
+        cheatingDaddy.setStatus('error');
+        return false;
     }
+
+    const preflight = await getProviderSecrets(accessToken.trim(), { consume: false });
+    if (!preflight?.success) {
+        lastInitErrorMessage = parseAccessTokenErrorMessage(preflight?.error);
+        cheatingDaddy.setStatus(lastInitErrorMessage);
+        return false;
+    }
+
+    const prefs = await storage.getPreferences();
+    const success = await ipcRenderer.invoke('initialize-gemini', accessToken.trim(), buildCombinedContext(prefs), profile, language);
+    if (success) {
+        lastInitErrorMessage = '';
+        cheatingDaddy.setStatus('Live');
+        return true;
+    }
+
+    if (!lastInitErrorMessage) {
+        lastInitErrorMessage = 'Unable to start session with this access token.';
+    }
+    cheatingDaddy.setStatus('error');
+    return false;
+}
+
+function parseAccessTokenErrorMessage(errorText = '') {
+    const normalized = String(errorText || '').toLowerCase();
+    if (normalized.includes('invalid or expired access token')) {
+        return 'Access token is invalid or expired.';
+    }
+    if (normalized.includes('access token is required') || normalized.includes('missing access token')) {
+        return 'Access token is required.';
+    }
+    if (normalized.includes('secret resolution failed (403)')) {
+        return 'Access token is invalid or expired.';
+    }
+    if (normalized.includes('supabase runtime is not configured') || normalized.includes('supabase unavailable')) {
+        return 'Token validation service is unavailable right now.';
+    }
+    return 'Unable to validate access token. Please try again.';
+}
+
+function getLastInitError() {
+    return lastInitErrorMessage || '';
+}
+
+async function clearSessionProviderSecrets() {
+    try {
+        const creds = await storage.getCredentials();
+        const token = (creds.cloudToken || '').trim();
+        if (!token) return { success: true, skipped: true };
+
+        await storage.clearProviderSecrets();
+        await ipcRenderer.invoke('clear-runtime-provider-secrets').catch(() => ({ success: false }));
+        lastInitErrorMessage = '';
+        return { success: true };
+    } catch (error) {
+        console.error('Error clearing session provider secrets:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+async function getProviderSecrets(accessToken = null, options = {}) {
+    const consume = Boolean(options.consume);
+    const resolvedAccessToken = accessToken || (await storage.getAccessToken());
+    if (!resolvedAccessToken || !resolvedAccessToken.trim()) {
+        return { success: false, error: 'Missing access token' };
+    }
+
+    const token = resolvedAccessToken.trim();
+    const now = Date.now();
+    if (
+        !consume
+        && providerSecretsCache
+        && providerSecretsToken === token
+        && (now - providerSecretsResolvedAt) < PROVIDER_SECRETS_CACHE_TTL_MS
+    ) {
+        return { success: true, data: providerSecretsCache, cached: true };
+    }
+
+    const resolved = await ipcRenderer.invoke('resolve-provider-secrets', token, { consume });
+    if (resolved?.success && resolved?.data) {
+        providerSecretsCache = resolved.data;
+        providerSecretsToken = token;
+        providerSecretsResolvedAt = now;
+    }
+
+    return resolved;
 }
 
 async function initializeLocal(profile = 'interview') {
@@ -609,18 +711,36 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
     );
 }
 
-const MANUAL_SCREENSHOT_PROMPT = `Extract ALL visible questions and their corresponding answers from the screenshot, including any text shown in paused videos or images.
+const MANUAL_SCREENSHOT_PROMPT = `Analyze the screenshot and detect questions accurately.
+
+QUESTION DETECTION RULES (CRITICAL):
+1) If a screenshot shows ONE coding problem statement followed by multiple "Input/Output/Example/Explanation" blocks, treat it as ONE question only.
+2) Treat examples, sample I/O, constraints, and hints as supporting details for that same primary problem — NOT separate questions.
+3) Only treat content as MULTIPLE questions when they are clearly independent (e.g., explicit Q1/Q2 numbering or unrelated stems).
+4) If there is ambiguity, prefer a single primary-question interpretation.
 
 **IMPORTANT — NO INTERVIEWER IS PRESENT:** This is a silent screen analysis. The user is NOT speaking to anyone right now. Go CODE-FIRST: provide working, complete code immediately with NO introductory sentences, NO "Sure!", NO "Here's the code:", NO preamble whatsoever. Just the answer or code block directly.
 
 Format:
-- For each question, output the question text followed by its answer on a new line.
+- Output exactly one Q/ANS pair for a single primary problem, OR multiple Q/ANS pairs only when truly independent questions are visible.
 - MCQ: "Q1: [question]" then "ANS: [correct option letter]) [option text]" — identify which option letter (A/B/C/D/etc.) is actually correct and output that letter. NEVER default to A unless A is genuinely the right answer. Example: "ANS: C) Nominal Data"
 - Math: "Q: [question]" then "ANS: [final answer]"
 - Code: "Q: [question]" then "ANS: [working code — no preamble, start with the code block]"
 - Text: "Q: [question]" then "ANS: [1-2 sentence answer]"
 
-If multiple questions are visible, extract and answer each. Do not skip any visible question. If a question is partially visible, extract as much as possible.
+CODE TEMPLATE PRESERVATION (CRITICAL):
+- If the screenshot shows starter/template code (e.g., LeetCode class + function signature), preserve that structure.
+- Do NOT replace with a totally different file shape.
+- Do NOT add top-level includes/imports/using statements unless they are already present in the visible starter.
+- Prefer returning only the function/class body that matches the on-screen scaffold.
+
+CODE ORIGINALITY RULES (ANTI-PLAGIARISM):
+- Avoid textbook/canonical LeetCode editorial structure when a correct alternative exists.
+- Use natural but less-generic variable names and slightly different control-flow/helper decomposition.
+- Keep correctness and complexity class appropriate; do not degrade performance just to look different.
+- Output should look like human-authored interview code, not template boilerplate.
+
+If a question is partially visible, extract as much as possible and answer based on visible context.
 
 NO introductions, NO "Certainly!", NO "Here is...", NO reasoning preamble, NO "the answer is". Only the extracted questions and their direct answers.
 
@@ -820,6 +940,15 @@ async function sendTextMessage(text) {
     }
 }
 
+async function saveTextFile(text, defaultName = 'session-export.txt') {
+    try {
+        return await ipcRenderer.invoke('save-text-file', { text, defaultName });
+    } catch (error) {
+        console.error('Error invoking save-text-file:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 // Listen for conversation data from main process and save to storage
 ipcRenderer.on('save-conversation-turn', async (event, data) => {
     try {
@@ -872,6 +1001,47 @@ function handleShortcut(shortcutKey) {
             cheatingDaddy.element().handleStart();
         } else {
             captureManualScreenshot();
+        }
+        return;
+    }
+
+    if (shortcutKey === 'coding-dock' || shortcutKey === 'dock-left') {
+        const app = cheatingDaddy.element();
+        if (!app) return;
+
+        // Switch to coding-oriented profile and persist preference.
+        // In this app, 'exam' is the coding/exam assistant profile.
+        app.selectedProfile = 'exam';
+        if (typeof app.handleProfileChange === 'function') {
+            app.handleProfileChange('exam').catch(() => {});
+        } else {
+            cheatingDaddy.storage.updatePreference('selectedProfile', 'exam').catch(() => {});
+        }
+
+        // Default coding layout assumption: editor/input is on the right,
+        // so dock overlay to the left full-height pane.
+        if (typeof cheatingDaddy.repositionWindow === 'function') {
+            cheatingDaddy.repositionWindow('right');
+        }
+
+        if (typeof app.requestUpdate === 'function') {
+            app.requestUpdate();
+        }
+        return;
+    }
+
+    if (shortcutKey === 'dock-right') {
+        if (typeof cheatingDaddy.repositionWindow === 'function') {
+            // Put overlay on right side full-height
+            // (means input/editor area is likely on the left)
+            cheatingDaddy.repositionWindow('left');
+        }
+        return;
+    }
+
+    if (shortcutKey === 'dock-default') {
+        if (typeof cheatingDaddy.repositionWindow === 'function') {
+            cheatingDaddy.repositionWindow('default');
         }
     }
 }
@@ -1182,7 +1352,11 @@ const cheatingDaddy = {
     startCapture,
     stopCapture,
     sendTextMessage,
+    getProviderSecrets,
+    getLastInitError,
+    clearSessionProviderSecrets,
     handleShortcut,
+    saveTextFile,
     repositionWindow: async (hint) => ipcRenderer.invoke('reposition-window', hint),
 
     // Storage API

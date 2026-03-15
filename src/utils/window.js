@@ -3,6 +3,7 @@ const path = require('node:path');
 const storage = require('../storage');
 
 let mouseEventsIgnored = false;
+let currentView = 'main';
 
 function createWindow(sendToRenderer, geminiSessionRef) {
     // Keep window compact — never more than 60% width / 38% height of the screen
@@ -15,11 +16,12 @@ function createWindow(sendToRenderer, geminiSessionRef) {
         height: windowHeight,
         minWidth: 480,
         minHeight: 300,
-        maxHeight: Math.floor(workArea.height * 0.65),
+        maxHeight: workArea.height,
         frame: false,
         transparent: true,
         hasShadow: false,
         alwaysOnTop: true,
+        skipTaskbar: true,
         maximizable: false,
         webPreferences: {
             nodeIntegration: true,
@@ -28,9 +30,13 @@ function createWindow(sendToRenderer, geminiSessionRef) {
             enableBlinkFeatures: 'GetDisplayMedia',
             webSecurity: true,
             allowRunningInsecureContent: false,
+            devTools: !require('electron').app.isPackaged,
         },
         backgroundColor: '#00000000',
     });
+
+    mouseEventsIgnored = false;
+    mainWindow.setIgnoreMouseEvents(false);
 
     const { session, desktopCapturer } = require('electron');
     session.defaultSession.setDisplayMediaRequestHandler(
@@ -45,15 +51,6 @@ function createWindow(sendToRenderer, geminiSessionRef) {
     mainWindow.setResizable(true);
     mainWindow.setContentProtection(true);
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-
-    // Hide from Windows taskbar
-    if (process.platform === 'win32') {
-        try {
-            mainWindow.setSkipTaskbar(true);
-        } catch (error) {
-            console.warn('Could not hide from taskbar:', error.message);
-        }
-    }
 
     // Hide from Mission Control on macOS
     if (process.platform === 'darwin') {
@@ -112,7 +109,10 @@ function getDefaultKeybinds() {
         nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
         scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
         scrollDown: isMac ? 'Cmd+Shift+Down' : 'Ctrl+Shift+Down',
-        emergencyErase: isMac ? 'Cmd+Shift+E' : 'Ctrl+Shift+E',
+        dockLeft: isMac ? 'Cmd+Shift+R' : 'Ctrl+Shift+R',
+        dockRight: isMac ? 'Cmd+Shift+Q' : 'Ctrl+Shift+Q',
+        dockDefault: isMac ? 'Cmd+Shift+T' : 'Ctrl+Shift+T',
+        emergencyErase: isMac ? 'Cmd+Shift+X' : 'Ctrl+Shift+X',
     };
 }
 
@@ -183,6 +183,15 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     if (keybinds.toggleClickThrough) {
         try {
             globalShortcut.register(keybinds.toggleClickThrough, () => {
+                if (currentView !== 'assistant') {
+                    if (mouseEventsIgnored) {
+                        mouseEventsIgnored = false;
+                        mainWindow.setIgnoreMouseEvents(false);
+                        mainWindow.webContents.send('click-through-toggled', false);
+                    }
+                    return;
+                }
+
                 mouseEventsIgnored = !mouseEventsIgnored;
                 if (mouseEventsIgnored) {
                     mainWindow.setIgnoreMouseEvents(true, { forward: true });
@@ -305,11 +314,69 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
             console.error(`Failed to register emergencyErase (${keybinds.emergencyErase}):`, error);
         }
     }
+
+    // Register dock-left shortcut (switch to coding + dock left)
+    if (keybinds.dockLeft) {
+        try {
+            globalShortcut.register(keybinds.dockLeft, async () => {
+                console.log('Dock-left shortcut triggered');
+                try {
+                    mainWindow.webContents.executeJavaScript(`
+                        cheatingDaddy.handleShortcut('dock-left');
+                    `);
+                } catch (error) {
+                    console.error('Error handling dock-left shortcut:', error);
+                }
+            });
+            console.log(`Registered dockLeft: ${keybinds.dockLeft}`);
+        } catch (error) {
+            console.error(`Failed to register dockLeft (${keybinds.dockLeft}):`, error);
+        }
+    }
+
+    // Register dock-right shortcut
+    if (keybinds.dockRight) {
+        try {
+            globalShortcut.register(keybinds.dockRight, async () => {
+                console.log('Dock-right shortcut triggered');
+                try {
+                    mainWindow.webContents.executeJavaScript(`
+                        cheatingDaddy.handleShortcut('dock-right');
+                    `);
+                } catch (error) {
+                    console.error('Error handling dock-right shortcut:', error);
+                }
+            });
+            console.log(`Registered dockRight: ${keybinds.dockRight}`);
+        } catch (error) {
+            console.error(`Failed to register dockRight (${keybinds.dockRight}):`, error);
+        }
+    }
+
+    // Register dock-default shortcut
+    if (keybinds.dockDefault) {
+        try {
+            globalShortcut.register(keybinds.dockDefault, async () => {
+                console.log('Dock-default shortcut triggered');
+                try {
+                    mainWindow.webContents.executeJavaScript(`
+                        cheatingDaddy.handleShortcut('dock-default');
+                    `);
+                } catch (error) {
+                    console.error('Error handling dock-default shortcut:', error);
+                }
+            });
+            console.log(`Registered dockDefault: ${keybinds.dockDefault}`);
+        } catch (error) {
+            console.error(`Failed to register dockDefault (${keybinds.dockDefault}):`, error);
+        }
+    }
 }
 
 function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
     ipcMain.on('view-changed', (event, view) => {
         if (!mainWindow.isDestroyed()) {
+            currentView = view;
             const primaryDisplay = screen.getPrimaryDisplay();
             const { width: screenWidth } = primaryDisplay.workAreaSize;
 
@@ -327,7 +394,9 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                 const x = Math.floor((screenWidth - fullWidth) / 2);
                 mainWindow.setSize(fullWidth, fullHeight);
                 mainWindow.setPosition(x, 0);
+                mouseEventsIgnored = false;
                 mainWindow.setIgnoreMouseEvents(false);
+                mainWindow.webContents.send('click-through-toggled', false);
             }
         }
     });
@@ -373,48 +442,81 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         if (!mainWindow || mainWindow.isDestroyed()) return { success: false };
 
         const primaryDisplay = screen.getPrimaryDisplay();
-        const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+        const workArea = primaryDisplay.workArea;
+        const screenWidth = workArea.width;
+        const screenHeight = workArea.height;
+        const workX = workArea.x;
+        const workY = workArea.y;
         const [winW, winH] = mainWindow.getSize();
         const margin = 20;
+        const sideWidth = Math.max(360, Math.floor(screenWidth * 0.42));
 
         let x, y;
+        let width = winW;
+        let height = winH;
+
+        const dockLeftFullHeight = () => {
+            x = workX;
+            y = workY;
+            width = sideWidth;
+            height = screenHeight;
+        };
+
+        const dockRightFullHeight = () => {
+            x = workX + screenWidth - sideWidth;
+            y = workY;
+            width = sideWidth;
+            height = screenHeight;
+        };
 
         switch (hint) {
             case 'right':
                 // Input on right → window goes left
-                x = margin;
-                y = margin;
+                dockLeftFullHeight();
                 break;
             case 'left':
                 // Input on left → window goes right
-                x = screenWidth - winW - margin;
-                y = margin;
+                dockRightFullHeight();
                 break;
             case 'bottom-right':
-                x = margin;
-                y = margin;
+                dockLeftFullHeight();
                 break;
             case 'bottom-left':
-                x = screenWidth - winW - margin;
-                y = margin;
+                dockRightFullHeight();
                 break;
             case 'top-right':
-                x = margin;
-                y = screenHeight - winH - margin;
+                dockLeftFullHeight();
                 break;
             case 'top-left':
-                x = screenWidth - winW - margin;
-                y = screenHeight - winH - margin;
+                dockRightFullHeight();
                 break;
+            case 'default': {
+                const defaultWidth = 850;
+                const defaultHeight = 400;
+                width = defaultWidth;
+                height = defaultHeight;
+                x = workX + Math.floor((screenWidth - defaultWidth) / 2);
+                y = workY;
+                break;
+            }
             case 'center':
             default:
                 // Default: top-right corner
-                x = screenWidth - winW - margin;
-                y = margin;
+                x = workX + screenWidth - winW - margin;
+                y = workY + margin;
                 break;
         }
 
-        mainWindow.setPosition(Math.max(0, Math.round(x)), Math.max(0, Math.round(y)));
+        if (width !== winW || height !== winH) {
+            mainWindow.setBounds({
+                x: Math.max(workX, Math.round(x)),
+                y: Math.max(workY, Math.round(y)),
+                width: Math.round(width),
+                height: Math.round(height),
+            });
+        } else {
+            mainWindow.setPosition(Math.max(workX, Math.round(x)), Math.max(workY, Math.round(y)));
+        }
         return { success: true };
     });
 }
