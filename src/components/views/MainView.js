@@ -267,7 +267,7 @@ export class MainView extends LitElement {
 
     async _loadFromStorage() {
         try {
-            const creds = await cheatingDaddy.storage.getCredentials().catch(() => ({}));
+            const creds = await hintio.storage.getCredentials().catch(() => ({}));
             this._token = creds.cloudToken || '';
             this.requestUpdate();
         } catch (error) {
@@ -278,7 +278,7 @@ export class MainView extends LitElement {
     async _saveToken(val) {
         this._token = val;
         this._tokenErrorMessage = '';
-        await cheatingDaddy.storage.setAccessToken(val);
+        await hintio.storage.setAccessToken(val);
         this.requestUpdate();
     }
 
@@ -296,7 +296,7 @@ export class MainView extends LitElement {
 
     async _startWithPersistedCredentials() {
         try {
-            await cheatingDaddy.storage.setAccessToken(this._token.trim());
+            await hintio.storage.setAccessToken(this._token.trim());
             this.onStart();
         } catch (error) {
             console.error('Failed to persist access token before start:', error);

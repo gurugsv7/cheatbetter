@@ -10,7 +10,7 @@ import { AICustomizeView } from '../views/AICustomizeView.js';
 import { FeedbackView } from '../views/FeedbackView.js';
 import { CalibrationView } from '../views/CalibrationView.js';
 
-export class CheatingDaddyApp extends LitElement {
+export class HintioApp extends LitElement {
     static styles = css`
         * {
             box-sizing: border-box;
@@ -133,9 +133,16 @@ export class CheatingDaddyApp extends LitElement {
             display: flex;
             align-items: center;
             gap: 1px;
-            flex: 1;
+            flex: 0 1 auto;
             -webkit-app-region: no-drag;
             padding: 0 8px;
+        }
+
+        .nav-drag-spacer {
+            flex: 1;
+            min-width: 24px;
+            height: 100%;
+            -webkit-app-region: drag;
         }
 
         .nav-item {
@@ -155,10 +162,19 @@ export class CheatingDaddyApp extends LitElement {
             position: relative;
         }
 
-        .nav-item svg {
-            width: 14px;
-            height: 14px;
+        /* Material Symbols inside nav items */
+        .nav-item .icon {
+            font-family: 'Material Symbols Rounded';
+            font-size: 16px;
+            font-weight: normal;
+            font-style: normal;
+            line-height: 1;
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
             flex-shrink: 0;
+        }
+
+        .nav-item.active .icon {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
         }
 
         .nav-item:hover {
@@ -483,10 +499,10 @@ export class CheatingDaddyApp extends LitElement {
 
     async _checkForUpdates() {
         try {
-            this._localVersion = await cheatingDaddy.getVersion();
+            this._localVersion = await hintio.getVersion();
             this.requestUpdate();
 
-            const res = await fetch('https://raw.githubusercontent.com/sohzm/cheating-daddy/refs/heads/master/package.json');
+            const res = await fetch('https://raw.githubusercontent.com/sohzm/hintio/refs/heads/master/package.json');
             if (!res.ok) return;
             const remote = await res.json();
             const remoteVersion = remote.version;
@@ -507,9 +523,9 @@ export class CheatingDaddyApp extends LitElement {
     async _loadFromStorage() {
         try {
             const [config, prefs, voiceProfile] = await Promise.all([
-                cheatingDaddy.storage.getConfig(),
-                cheatingDaddy.storage.getPreferences(),
-                cheatingDaddy.storage.getVoiceProfile(),
+                hintio.storage.getConfig(),
+                hintio.storage.getPreferences(),
+                hintio.storage.getVoiceProfile(),
             ]);
 
             this.currentView = config.onboarded ? 'main' : 'onboarding';
@@ -629,8 +645,8 @@ export class CheatingDaddyApp extends LitElement {
         if (layoutMatch && this._awaitingScreenAnalysis && !this._layoutRepositioned) {
             this._layoutRepositioned = true;
             const hint = layoutMatch[1].toLowerCase();
-            if (window.cheatingDaddy?.repositionWindow) {
-                window.cheatingDaddy.repositionWindow(hint);
+            if (window.hintio?.repositionWindow) {
+                window.hintio.repositionWindow(hint);
             }
         }
         cleaned = cleaned.replace(/\n?===LAYOUT:[a-z-]+===\n?/gi, '');
@@ -659,13 +675,13 @@ export class CheatingDaddyApp extends LitElement {
 
     async handleClose() {
         if (this.currentView === 'assistant') {
-            cheatingDaddy.stopCapture();
+            hintio.stopCapture();
             if (window.require) {
                 const { ipcRenderer } = window.require('electron');
                 await ipcRenderer.invoke('close-session');
             }
-            if (window.cheatingDaddy?.clearSessionProviderSecrets) {
-                await window.cheatingDaddy.clearSessionProviderSecrets();
+            if (window.hintio?.clearSessionProviderSecrets) {
+                await window.hintio.clearSessionProviderSecrets();
             }
             this.sessionActive = false;
             this._stopTimer();
@@ -710,18 +726,18 @@ export class CheatingDaddyApp extends LitElement {
 
     async handleCalibrationComplete(voiceProfile) {
         if (voiceProfile) {
-            await cheatingDaddy.storage.saveVoiceProfile(voiceProfile);
+            await hintio.storage.saveVoiceProfile(voiceProfile);
             this._hasVoiceProfile = true;
         }
         this._calibrationSkipped = false;
-        await cheatingDaddy.storage.updatePreference('skipVoiceCalibration', false);
+        await hintio.storage.updatePreference('skipVoiceCalibration', false);
         // Proceed to start session
         await this._startSession();
     }
 
     async handleCalibrationSkip() {
         this._calibrationSkipped = true;
-        cheatingDaddy.storage.updatePreference('skipVoiceCalibration', true).catch((error) => {
+        hintio.storage.updatePreference('skipVoiceCalibration', true).catch((error) => {
             console.warn('Failed to persist skipVoiceCalibration preference:', error);
         });
         // Navigate to main first so main-view is in the DOM before _startSession()
@@ -733,10 +749,10 @@ export class CheatingDaddyApp extends LitElement {
     }
 
     async handleResetVoiceProfile() {
-        await cheatingDaddy.storage.deleteVoiceProfile();
+        await hintio.storage.deleteVoiceProfile();
         this._hasVoiceProfile = false;
         this._calibrationSkipped = false;
-        await cheatingDaddy.storage.updatePreference('skipVoiceCalibration', false);
+        await hintio.storage.updatePreference('skipVoiceCalibration', false);
         this.requestUpdate();
     }
 
@@ -748,14 +764,14 @@ export class CheatingDaddyApp extends LitElement {
     }
 
     async _startSession() {
-        const prefs = await cheatingDaddy.storage.getPreferences();
-        const creds = await cheatingDaddy.storage.getCredentials();
+        const prefs = await hintio.storage.getPreferences();
+        const creds = await hintio.storage.getCredentials();
         const accessToken = (creds.cloudToken || '').trim();
 
         let providerMode = prefs.providerMode || 'byok';
         if (providerMode === 'cloud' && accessToken.startsWith('SKI-')) {
             providerMode = 'byok';
-            cheatingDaddy.storage.updatePreference('providerMode', 'byok').catch(() => {});
+            hintio.storage.updatePreference('providerMode', 'byok').catch(() => {});
         }
 
         if (providerMode === 'cloud') {
@@ -764,34 +780,34 @@ export class CheatingDaddyApp extends LitElement {
                 return;
             }
 
-            const success = await cheatingDaddy.initializeCloud(this.selectedProfile);
+            const success = await hintio.initializeCloud(this.selectedProfile);
             if (!success) {
                 this._showMainViewTokenError('Unable to start cloud session. Check your access token.');
                 return;
             }
         } else if (providerMode === 'local') {
-            const success = await cheatingDaddy.initializeLocal(this.selectedProfile);
+            const success = await hintio.initializeLocal(this.selectedProfile);
             if (!success) {
                 this._showMainViewTokenError('Local AI failed to initialize.');
                 return;
             }
         } else {
-            const creds = await cheatingDaddy.storage.getCredentials();
+            const creds = await hintio.storage.getCredentials();
             const accessToken = creds.cloudToken || '';
             if (!accessToken || accessToken.trim() === '') {
                 this._showMainViewTokenError('Access token is required.');
                 return;
             }
 
-            const success = await cheatingDaddy.initializeGemini(this.selectedProfile, this.selectedLanguage);
+            const success = await hintio.initializeAzure(this.selectedProfile, this.selectedLanguage);
             if (!success) {
-                const initError = typeof cheatingDaddy.getLastInitError === 'function' ? cheatingDaddy.getLastInitError() : '';
+                const initError = typeof hintio.getLastInitError === 'function' ? hintio.getLastInitError() : '';
                 this._showMainViewTokenError(initError || 'Access token is invalid or expired.');
                 return;
             }
         }
 
-        cheatingDaddy.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
+        hintio.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
         this.responses = [];
         this.currentResponseIndex = -1;
         this.startTime = Date.now();
@@ -803,7 +819,7 @@ export class CheatingDaddyApp extends LitElement {
     async handleAPIKeyHelp() {
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
-            await ipcRenderer.invoke('open-external', 'https://cheatingdaddy.com/help/api-key');
+            await ipcRenderer.invoke('open-external', 'https://hintio.com/help/api-key');
         }
     }
 
@@ -818,27 +834,27 @@ export class CheatingDaddyApp extends LitElement {
 
     async handleProfileChange(profile) {
         this.selectedProfile = profile;
-        await cheatingDaddy.storage.updatePreference('selectedProfile', profile);
+        await hintio.storage.updatePreference('selectedProfile', profile);
     }
 
     async handleLanguageChange(language) {
         this.selectedLanguage = language;
-        await cheatingDaddy.storage.updatePreference('selectedLanguage', language);
+        await hintio.storage.updatePreference('selectedLanguage', language);
     }
 
     async handleScreenshotIntervalChange(interval) {
         this.selectedScreenshotInterval = interval;
-        await cheatingDaddy.storage.updatePreference('selectedScreenshotInterval', interval);
+        await hintio.storage.updatePreference('selectedScreenshotInterval', interval);
     }
 
     async handleImageQualityChange(quality) {
         this.selectedImageQuality = quality;
-        await cheatingDaddy.storage.updatePreference('selectedImageQuality', quality);
+        await hintio.storage.updatePreference('selectedImageQuality', quality);
     }
 
     async handleLayoutModeChange(layoutMode) {
         this.layoutMode = layoutMode;
-        await cheatingDaddy.storage.updateConfig('layout', layoutMode);
+        await hintio.storage.updateConfig('layout', layoutMode);
         if (window.require) {
             try {
                 const { ipcRenderer } = window.require('electron');
@@ -858,7 +874,7 @@ export class CheatingDaddyApp extends LitElement {
     }
 
     async handleSendText(message) {
-        const result = await window.cheatingDaddy.sendTextMessage(message);
+        const result = await window.hintio.sendTextMessage(message);
         if (!result.success) {
             this.setStatus('Error sending message: ' + result.error);
         } else {
@@ -997,32 +1013,32 @@ export class CheatingDaddyApp extends LitElement {
             {
                 id: 'main',
                 label: 'Home',
-                icon: html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="m19 8.71l-5.333-4.148a2.666 2.666 0 0 0-3.274 0L5.059 8.71a2.67 2.67 0 0 0-1.029 2.105v7.2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.2c0-.823-.38-1.6-1.03-2.105"/><path d="M16 15c-2.21 1.333-5.792 1.333-8 0"/></g></svg>`,
+                icon: html`<span class="icon">home</span>`,
             },
             {
                 id: 'ai-customize',
                 label: 'AI Context',
-                icon: html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 3v7h6l-8 11v-7H5z"/></svg>`,
+                icon: html`<span class="icon">psychology</span>`,
             },
             {
                 id: 'history',
                 label: 'History',
-                icon: html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M10 20.777a9 9 0 0 1-2.48-.969M14 3.223a9.003 9.003 0 0 1 0 17.554m-9.421-3.684a9 9 0 0 1-1.227-2.592M3.124 10.5c.16-.95.468-1.85.9-2.675l.169-.305m2.714-2.941A9 9 0 0 1 10 3.223"/><path d="M12 8v4l3 3"/></g></svg>`,
+                icon: html`<span class="icon">history</span>`,
             },
             {
                 id: 'customize',
                 label: 'Settings',
-                icon: html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M19.875 6.27A2.23 2.23 0 0 1 21 8.218v7.284c0 .809-.443 1.555-1.158 1.948l-6.75 4.27a2.27 2.27 0 0 1-2.184 0l-6.75-4.27A2.23 2.23 0 0 1 3 15.502V8.217c0-.809.443-1.554 1.158-1.947l6.75-3.98a2.33 2.33 0 0 1 2.25 0l6.75 3.98z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 1 0-6 0"/></g></svg>`,
+                icon: html`<span class="icon">tune</span>`,
             },
             {
                 id: 'feedback',
                 label: 'Feedback',
-                icon: html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-5l-5 3v-3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3zM9.5 9h.01m4.99 0h.01"/><path d="M9.5 13a3.5 3.5 0 0 0 5 0"/></g></svg>`,
+                icon: html`<span class="icon">rate_review</span>`,
             },
             {
                 id: 'help',
                 label: 'Help',
-                icon: html`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M12 3c7.2 0 9 1.8 9 9s-1.8 9-9 9s-9-1.8-9-9s1.8-9 9-9m0 13v.01"/><path d="M12 13a2 2 0 0 0 .914-3.782a1.98 1.98 0 0 0-2.414.483"/></g></svg>`,
+                icon: html`<span class="icon">help</span>`,
             },
         ];
 
@@ -1031,7 +1047,7 @@ export class CheatingDaddyApp extends LitElement {
                 <!-- Brand -->
                 <div class="nav-brand">
                     <div class="nav-brand-mark">G</div>
-                    <span class="nav-brand-name">GSV</span>
+                    <span class="nav-brand-name">Hintio</span>
                 </div>
 
                 <!-- Nav items -->
@@ -1044,15 +1060,17 @@ export class CheatingDaddyApp extends LitElement {
                     `)}
                 </nav>
 
+                <div class="nav-drag-spacer" aria-hidden="true"></div>
+
                 <!-- End: version tag + wc buttons -->
                 <div class="nav-end">
                     ${this._updateAvailable ? html`<div class="update-dot" title="Update available"></div>` : ''}
                     ${this._localVersion ? html`<span class="version-tag">v${this._localVersion}</span>` : ''}
                     <button class="wc-btn minimize" @click=${() => this._handleMinimize()} title="Minimise">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        <span class="icon" style="font-size:14px; position:relative; top:-2px">minimize</span>
                     </button>
                     <button class="wc-btn close" @click=${() => this.handleClose()} title="Close">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
+                        <span class="icon" style="font-size:14px">close</span>
                     </button>
                 </div>
             </div>
@@ -1123,4 +1141,4 @@ export class CheatingDaddyApp extends LitElement {
     }
 }
 
-customElements.define('cheating-daddy-app', CheatingDaddyApp);
+customElements.define('hintio-app', HintioApp);

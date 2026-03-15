@@ -6,7 +6,7 @@ const { app, BrowserWindow, shell, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
-const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer, clearRuntimeProviderSecrets } = require('./utils/gemini');
+const { setupProviderRuntimeIpcHandlers, stopMacOSAudioCapture, sendToRenderer, clearRuntimeProviderSecrets } = require('./utils/providerRuntime');
 const storage = require('./storage');
 
 let autoUpdater = null;
@@ -16,11 +16,11 @@ try {
     autoUpdater = null;
 }
 
-const geminiSessionRef = { current: null };
+const providerSessionRef = { current: null };
 let mainWindow = null;
 
 function createMainWindow() {
-    mainWindow = createWindow(sendToRenderer, geminiSessionRef);
+    mainWindow = createWindow(sendToRenderer, providerSessionRef);
     return mainWindow;
 }
 
@@ -58,6 +58,11 @@ function setupAutoUpdates() {
 }
 
 app.whenReady().then(async () => {
+    const forceFreshStart = !app.isPackaged && process.env.HINTIO_DEBUG_FRESH_START !== '0';
+    if (forceFreshStart) {
+        storage.clearAllData();
+    }
+
     // Initialize storage (checks version, resets if needed)
     storage.initializeStorage();
 
@@ -68,7 +73,7 @@ app.whenReady().then(async () => {
     }
 
     createMainWindow();
-    setupGeminiIpcHandlers(geminiSessionRef);
+    setupProviderRuntimeIpcHandlers(providerSessionRef);
     setupStorageIpcHandlers();
     setupGeneralIpcHandlers();
     setupAutoUpdates();
@@ -438,7 +443,7 @@ function setupGeneralIpcHandlers() {
         if (mainWindow) {
             // Also save to storage
             storage.setKeybinds(newKeybinds);
-            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, geminiSessionRef);
+            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, providerSessionRef);
         }
     });
 

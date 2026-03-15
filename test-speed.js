@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const credPath = path.join(os.homedir(), 'AppData', 'Roaming', 'cheating-daddy-config', 'credentials.json');
+const credPath = path.join(os.homedir(), 'AppData', 'Roaming', 'hintio-config', 'credentials.json');
 const creds = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
 
 const { azureApiKey, azureEndpoint, azureDeployment } = creds;

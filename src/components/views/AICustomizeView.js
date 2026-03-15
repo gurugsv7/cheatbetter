@@ -332,7 +332,7 @@ export class AICustomizeView extends LitElement {
 
     async _loadFromStorage() {
         try {
-            const prefs = await cheatingDaddy.storage.getPreferences();
+            const prefs = await hintio.storage.getPreferences();
             this._context = prefs.customPrompt || '';
             this._resumeFileName = prefs.resumeFileName || '';
             // resumeText is stored separately — never shown in the textarea
@@ -348,7 +348,7 @@ export class AICustomizeView extends LitElement {
 
     async _saveContext(val) {
         this._context = val;
-        await cheatingDaddy.storage.updatePreference('customPrompt', val);
+        await hintio.storage.updatePreference('customPrompt', val);
     }
 
     async _handleResumeUpload() {
@@ -373,8 +373,8 @@ export class AICustomizeView extends LitElement {
 
             this._resumeFileName = fileName;
             // Save resume text to its own key, not into customPrompt
-            await cheatingDaddy.storage.updatePreference('resumeText', cleaned);
-            await cheatingDaddy.storage.updatePreference('resumeFileName', fileName);
+            await hintio.storage.updatePreference('resumeText', cleaned);
+            await hintio.storage.updatePreference('resumeFileName', fileName);
             this._resumeParsing = false;
             this.requestUpdate();
         } catch (err) {
@@ -388,8 +388,8 @@ export class AICustomizeView extends LitElement {
     async _clearResume() {
         this._resumeFileName = '';
         this._resumeError = '';
-        await cheatingDaddy.storage.updatePreference('resumeText', '');
-        await cheatingDaddy.storage.updatePreference('resumeFileName', '');
+        await hintio.storage.updatePreference('resumeText', '');
+        await hintio.storage.updatePreference('resumeFileName', '');
         this.requestUpdate();
     }
 

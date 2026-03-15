@@ -20,13 +20,13 @@ module.exports = {
             unpack: '**/{onnxruntime-node,onnxruntime-common,@huggingface/transformers,sharp,@img}/**',
         },
         extraResource,
-        name: 'GSV',
+        name: 'Hintio',
         win32metadata: {
-            CompanyName: 'gurugsv',
-            FileDescription: 'GSV',
-            OriginalFilename: 'GSV.exe',
-            ProductName: 'GSV',
-            InternalName: 'GSV',
+            CompanyName: 'Hintio',
+            FileDescription: 'Hintio',
+            OriginalFilename: 'Hintio.exe',
+            ProductName: 'Hintio',
+            InternalName: 'Hintio',
         },
         icon: 'src/assets/logo',
         ...(windowsCertificateFile
@@ -61,9 +61,9 @@ module.exports = {
         {
             name: '@electron-forge/maker-squirrel',
             config: {
-                name: 'GSV',
-                productName: 'GSV',
-                shortcutName: 'GSV',
+                name: 'Hintio',
+                productName: 'Hintio',
+                shortcutName: 'Hintio',
                 createDesktopShortcut: true,
                 createStartMenuShortcut: true,
                 ...(remoteReleases ? { remoteReleases } : {}),
@@ -82,8 +82,8 @@ module.exports = {
             platforms: ['linux'],
             config: {
                 options: {
-                    name: 'GSV',
-                    productName: 'GSV',
+                    name: 'Hintio',
+                    productName: 'Hintio',
                     genericName: 'AI Assistant',
                     description: 'AI assistant for interviews and learning',
                     categories: ['Development', 'Education'],

@@ -23,8 +23,7 @@ export class HistoryView extends LitElement {
                 left: 10px;
                 top: 50%;
                 transform: translateY(-50%);
-                width: 14px;
-                height: 14px;
+                font-size: 16px;
                 color: var(--text-muted);
                 pointer-events: none;
             }
@@ -147,8 +146,9 @@ export class HistoryView extends LitElement {
                 align-items: center;
             }
 
-            .back-btn svg {
+            .back-btn .icon {
                 cursor: pointer;
+                font-size: 18px;
             }
 
             .back-btn:hover {
@@ -323,7 +323,7 @@ export class HistoryView extends LitElement {
     async loadSessions() {
         try {
             this.loading = true;
-            this.sessions = await cheatingDaddy.storage.getAllSessions();
+            this.sessions = await hintio.storage.getAllSessions();
         } catch (error) {
             console.error('Error loading sessions:', error);
             this.sessions = [];
@@ -335,7 +335,7 @@ export class HistoryView extends LitElement {
 
     async openSession(sessionId) {
         try {
-            const session = await cheatingDaddy.storage.getSession(sessionId);
+            const session = await hintio.storage.getSession(sessionId);
             if (session) {
                 this.selectedSession = session;
                 this.selectedSessionId = sessionId;
@@ -547,7 +547,7 @@ export class HistoryView extends LitElement {
 
         const defaultName = this._getExportFileName();
         try {
-            const result = await cheatingDaddy.saveTextFile(text, defaultName);
+            const result = await hintio.saveTextFile(text, defaultName);
             if (result?.success) {
                 this._setActionStatus('Saved to file.');
             } else if (!result?.canceled) {
@@ -613,10 +613,7 @@ export class HistoryView extends LitElement {
             <div class="page-title">History</div>
 
             <div class="search-wrap">
-                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"/>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
+                <span class="icon search-icon">search</span>
                 <input
                     class="control"
                     type="text"
@@ -653,9 +650,7 @@ export class HistoryView extends LitElement {
             <div class="detail-top">
                 <div class="detail-main">
                     <button class="back-btn" @click=${this.closeSession}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="15 18 9 12 15 6"/>
-                        </svg>
+                        <span class="icon">arrow_back</span>
                     </button>
                     <span class="detail-info">${this._getProfileLabel(this.selectedSession)} · ${this.formatDate(this.selectedSession.createdAt)} · ${this.formatTime(this.selectedSession.createdAt)}</span>
                 </div>

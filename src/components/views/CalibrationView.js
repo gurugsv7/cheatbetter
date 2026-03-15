@@ -5,9 +5,9 @@ import { unifiedPageStyles } from './sharedPageStyles.js';
  * CalibrationView — "Train Your Voice" pre-session phase.
  *
  * Records the user's voice via MediaRecorder, visualises live mic levels,
- * transcribes each prompt's audio via Groq Whisper (or Gemini as fallback),
- * then analyses the transcripts through whichever LLM provider is configured
- * (Azure / Gemini / Groq) to build an observation-only voice profile.
+ * transcribes each prompt's audio via Groq Whisper (or Azure Speech fallback),
+ * then analyses the transcripts through configured providers
+ * (Azure first, Groq fallback) to build an observation-only voice profile.
  */
 
 const CALIBRATION_PROMPTS = [
@@ -924,7 +924,7 @@ export class CalibrationView extends LitElement {
      * Tries: 1) Groq Whisper  2) Azure Speech REST  3) returns empty
      */
     async _transcribeAudio(audioBlob) {
-        const resolved = await window.cheatingDaddy.getProviderSecrets().catch(() => ({ success: false }));
+        const resolved = await window.hintio.getProviderSecrets().catch(() => ({ success: false }));
         const secrets = resolved?.success ? (resolved.data || {}) : {};
 
         // Try Groq Whisper first (fast, free, reliable)
@@ -1000,47 +1000,6 @@ export class CalibrationView extends LitElement {
         return data.DisplayText || data.NBest?.[0]?.Display || '';
     }
 
-    async _transcribeWithGemini(audioBlob, apiKey) {
-        // Convert blob to base64
-        const arrayBuf = await audioBlob.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuf);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-            binary += String.fromCharCode(bytes[i]);
-        }
-        const base64 = btoa(binary);
-
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [
-                        {
-                            parts: [
-                                {
-                                    inlineData: {
-                                        mimeType: audioBlob.type || 'audio/webm',
-                                        data: base64,
-                                    },
-                                },
-                                {
-                                    text: 'Transcribe this audio exactly as spoken. Output ONLY the transcription, nothing else.',
-                                },
-                            ],
-                        },
-                    ],
-                    generationConfig: { temperature: 0, maxOutputTokens: 4096 },
-                }),
-            }
-        );
-
-        if (!response.ok) throw new Error(`Gemini ${response.status}`);
-        const data = await response.json();
-        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    }
-
     // ============ VOICE PROFILE ANALYSIS (multi-provider) ============
 
     async _buildVoiceProfile(transcripts) {
@@ -1081,7 +1040,7 @@ ${samplesText}
 
 Respond with ONLY the JSON object, no explanation.`;
 
-        // Try providers in order: Azure → Gemini → Groq
+        // Try providers in order: Azure → Groq
         const profile = await this._callLLMForAnalysis(analysisPrompt);
         if (!profile) return null;
 
@@ -1099,7 +1058,7 @@ Respond with ONLY the JSON object, no explanation.`;
     }
 
     async _callLLMForAnalysis(prompt) {
-        const resolved = await window.cheatingDaddy.getProviderSecrets().catch(() => ({ success: false }));
+        const resolved = await window.hintio.getProviderSecrets().catch(() => ({ success: false }));
         const secrets = resolved?.success ? (resolved.data || {}) : {};
 
         // 1) Azure OpenAI
@@ -1122,19 +1081,7 @@ Respond with ONLY the JSON object, no explanation.`;
             console.warn('Azure analysis failed:', e);
         }
 
-        // 2) Gemini
-        try {
-            const geminiKey = secrets.geminiApiKey || '';
-            if (geminiKey) {
-                console.log('CalibrationView: using Gemini for voice analysis');
-                const result = await this._analyzeWithGemini(prompt, geminiKey);
-                if (result) return result;
-            }
-        } catch (e) {
-            console.warn('Gemini analysis failed:', e);
-        }
-
-        // 3) Groq
+        // 2) Groq
         try {
             const groqKey = secrets.groqApiKey || '';
             if (groqKey) {
@@ -1185,29 +1132,6 @@ Respond with ONLY the JSON object, no explanation.`;
 
         const data = await response.json();
         const text = data.choices?.[0]?.message?.content;
-        return this._extractJSON(text);
-    }
-
-    async _analyzeWithGemini(prompt, apiKey) {
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: {
-                        temperature: 0.1,
-                        topP: 0.8,
-                        maxOutputTokens: 2048,
-                    },
-                }),
-            }
-        );
-
-        if (!response.ok) throw new Error(`Gemini ${response.status}`);
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
         return this._extractJSON(text);
     }
 

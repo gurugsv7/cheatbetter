@@ -1,8 +1,8 @@
 {
-    "name": "gsv",
-    "productName": "GSV",
+    "name": "hintio",
+    "productName": "Hintio",
     "version": "0.7.0",
-    "description": "GSV",
+    "description": "Hintio",
     "main": "src/index.js",
     "scripts": {
         "start": "electron-forge start",
@@ -15,14 +15,14 @@
         "lint": "echo \"No linting configured\""
     },
     "keywords": [
-        "GSV",
-        "GSV ai",
-        "GSV ai assistant",
-        "GSV ai assistant for interviews"
+        "Hintio",
+        "Hintio ai",
+        "Hintio ai assistant",
+        "Hintio ai assistant for interviews"
     ],
     "author": {
-        "name": "gurugsv",
-        "email": "gurugsv@users.noreply.github.com"
+        "name": "Hintio",
+        "email": "hintio@users.noreply.github.com"
     },
     "license": "GPL-3.0",
     "dependencies": {

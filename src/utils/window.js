@@ -10,8 +10,9 @@ const DEFAULT_HEIGHT = 560;
 const LIVE_WIDTH = 850;
 const LIVE_HEIGHT = 400;
 
-function createWindow(sendToRenderer, geminiSessionRef) {
-    const visibleMode = true;
+function createWindow(sendToRenderer, providerSessionRef) {
+    const isPackaged = require('electron').app.isPackaged;
+    const visibleMode = !isPackaged && process.env.HINTIO_DEBUG_VISIBLE_MODE !== '0';
 
     // Default app shell size for navigation pages
     const workArea = screen.getPrimaryDisplay().workAreaSize;
@@ -93,11 +94,11 @@ function createWindow(sendToRenderer, geminiSessionRef) {
                 keybinds = { ...defaultKeybinds, ...savedKeybinds };
             }
 
-            updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
+            updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, providerSessionRef);
         }, 150);
     });
 
-    setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef);
+    setupWindowIpcHandlers(mainWindow, sendToRenderer, providerSessionRef);
 
     return mainWindow;
 }
@@ -123,7 +124,7 @@ function getDefaultKeybinds() {
     };
 }
 
-function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef) {
+function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, providerSessionRef) {
     console.log('Updating global shortcuts with:', keybinds);
 
     // Unregister all existing shortcuts
@@ -227,7 +228,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
 
                     // Use the new handleShortcut function
                     mainWindow.webContents.executeJavaScript(`
-                        cheatingDaddy.handleShortcut('${shortcutKey}');
+                        hintio.handleShortcut('${shortcutKey}');
                     `);
                 } catch (error) {
                     console.error('Error handling next step shortcut:', error);
@@ -299,13 +300,13 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.hide();
 
-                    if (geminiSessionRef.stopSTT) {
-                        geminiSessionRef.stopSTT();
-                        geminiSessionRef.stopSTT = null;
+                    if (providerSessionRef.stopSTT) {
+                        providerSessionRef.stopSTT();
+                        providerSessionRef.stopSTT = null;
                     }
-                    if (geminiSessionRef.current) {
-                        geminiSessionRef.current.close();
-                        geminiSessionRef.current = null;
+                    if (providerSessionRef.current) {
+                        providerSessionRef.current.close();
+                        providerSessionRef.current = null;
                     }
 
                     sendToRenderer('clear-sensitive-data');
@@ -329,7 +330,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                 console.log('Dock-left shortcut triggered');
                 try {
                     mainWindow.webContents.executeJavaScript(`
-                        cheatingDaddy.handleShortcut('dock-left');
+                        hintio.handleShortcut('dock-left');
                     `);
                 } catch (error) {
                     console.error('Error handling dock-left shortcut:', error);
@@ -348,7 +349,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                 console.log('Dock-right shortcut triggered');
                 try {
                     mainWindow.webContents.executeJavaScript(`
-                        cheatingDaddy.handleShortcut('dock-right');
+                        hintio.handleShortcut('dock-right');
                     `);
                 } catch (error) {
                     console.error('Error handling dock-right shortcut:', error);
@@ -367,7 +368,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                 console.log('Dock-default shortcut triggered');
                 try {
                     mainWindow.webContents.executeJavaScript(`
-                        cheatingDaddy.handleShortcut('dock-default');
+                        hintio.handleShortcut('dock-default');
                     `);
                 } catch (error) {
                     console.error('Error handling dock-default shortcut:', error);
@@ -380,7 +381,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     }
 }
 
-function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
+function setupWindowIpcHandlers(mainWindow, sendToRenderer, providerSessionRef) {
     ipcMain.on('view-changed', (event, view) => {
         if (!mainWindow.isDestroyed()) {
             currentView = view;
@@ -417,7 +418,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
 
     ipcMain.on('update-keybinds', (event, newKeybinds) => {
         if (!mainWindow.isDestroyed()) {
-            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, geminiSessionRef);
+            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, providerSessionRef);
         }
     });
 

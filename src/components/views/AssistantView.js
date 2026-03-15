@@ -276,9 +276,21 @@ export class AssistantView extends LitElement {
             cursor: default;
         }
 
-        .nav-btn svg {
-            width: 14px;
-            height: 14px;
+        .icon {
+            font-family: 'Material Symbols Rounded';
+            font-weight: normal;
+            font-style: normal;
+            line-height: 1;
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+
+        .nav-btn .icon {
+            font-size: 16px;
         }
 
         .response-counter {
@@ -425,10 +437,10 @@ export class AssistantView extends LitElement {
             font-family: var(--font-mono);
         }
 
-        .error-panel-title svg {
-            width: 14px;
-            height: 14px;
+        .error-panel-title .icon {
+            font-size: 16px;
             flex-shrink: 0;
+            color: #f87171;
         }
 
         .error-panel-close {
@@ -448,9 +460,8 @@ export class AssistantView extends LitElement {
             background: rgba(255, 255, 255, 0.06);
         }
 
-        .error-panel-close svg {
-            width: 14px;
-            height: 14px;
+        .error-panel-close .icon {
+            font-size: 16px;
         }
 
         .error-panel-body {
@@ -870,18 +881,11 @@ export class AssistantView extends LitElement {
             <div class="error-panel ${this._errorPanelOpen ? 'open' : ''}">
                 <div class="error-panel-header">
                     <span class="error-panel-title">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                            <line x1="12" y1="9" x2="12" y2="13"/>
-                            <line x1="12" y1="17" x2="12.01" y2="17"/>
-                        </svg>
+                        <span class="icon">terminal</span>
                         Code Issue
                     </span>
                     <button class="error-panel-close" @click=${() => this._dismissErrorPanel()} title="Dismiss">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="18" y1="6" x2="6" y2="18"/>
-                            <line x1="6" y1="6" x2="18" y2="18"/>
-                        </svg>
+                        <span class="icon">close</span>
                     </button>
                 </div>
                 <div class="error-panel-body" .innerHTML=${renderedError}></div>
@@ -923,14 +927,14 @@ export class AssistantView extends LitElement {
 
             const copyBtn = document.createElement('button');
             copyBtn.className = 'code-block-copy';
-            copyBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>copy`;
+            copyBtn.innerHTML = `<span class="icon" style="font-size:14px;margin-right:2px">content_copy</span>copy`;
             copyBtn.addEventListener('click', () => {
                 const text = code ? code.innerText : pre.innerText;
                 navigator.clipboard.writeText(text).then(() => {
                     copyBtn.textContent = 'copied!';
                     copyBtn.classList.add('copied');
                     setTimeout(() => {
-                        copyBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>copy`;
+                        copyBtn.innerHTML = `<span class="icon" style="font-size:14px;margin-right:2px">content_copy</span>copy`;
                         copyBtn.classList.remove('copied');
                     }, 2000);
                 }).catch(() => {});
@@ -956,15 +960,11 @@ export class AssistantView extends LitElement {
             ${hasMultipleResponses ? html`
                 <div class="response-nav">
                     <button class="nav-btn" @click=${this.navigateToPreviousResponse} ?disabled=${this.currentResponseIndex <= 0} title="Previous response">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M11.78 5.22a.75.75 0 0 1 0 1.06L8.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06l-4.25-4.25a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0Z" clip-rule="evenodd" />
-                        </svg>
+                        <span class="icon">chevron_left</span>
                     </button>
                     <span class="response-counter">${this.currentResponseIndex + 1} of ${this.responses.length}</span>
                     <button class="nav-btn" @click=${this.navigateToNextResponse} ?disabled=${this.currentResponseIndex >= this.responses.length - 1} title="Next response">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.94 10 8.22 6.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                        </svg>
+                        <span class="icon">chevron_right</span>
                     </button>
                 </div>
             ` : ''}
@@ -981,9 +981,7 @@ export class AssistantView extends LitElement {
                 <button class="analyze-btn ${this.isAnalyzing ? 'analyzing' : ''}" @click=${this.handleScreenAnswer}>
                     <canvas class="analyze-canvas"></canvas>
                     <span class="analyze-btn-content">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
-                            <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 3v7h6l-8 11v-7H5z" />
-                        </svg>
+                        <span class="icon" style="font-size: 16px;">psychology</span>
                         Analyze Screen
                     </span>
                 </button>

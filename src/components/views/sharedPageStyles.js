@@ -111,20 +111,45 @@ export const unifiedPageStyles = css`
         box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     }
 
+    .surface-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 14px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
+    }
+
     .surface-title {
         color: var(--text-primary);
         font-size: var(--font-size-sm);
         font-weight: var(--font-weight-semibold);
-        margin-bottom: 12px;
         display: flex;
         align-items: center;
         gap: 8px;
+        flex: 1;
     }
 
     .surface-subtitle {
         color: var(--text-muted);
         font-size: var(--font-size-xs);
         margin-bottom: var(--space-md);
+    }
+
+    /* ── Material icon helper ── */
+
+    .icon {
+        font-family: 'Material Symbols Rounded';
+        font-size: 18px;
+        font-weight: normal;
+        font-style: normal;
+        line-height: 1;
+        font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        user-select: none;
     }
 
     /* ── Form layout ── */

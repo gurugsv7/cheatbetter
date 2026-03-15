@@ -1,148 +1,284 @@
-# Product Requirements Document — GSV
+# Product Requirements Document — Hintio (Implementation-Accurate)
 
-## Overview
+## 1) Product Summary
 
-GSV is an Electron-based real-time AI assistant that helps students and professionals prepare for high-stakes situations: job interviews, presentations, negotiations, exams. The platform captures screen and audio context and provides AI-powered guidance through an always-on-top overlay.
+Hintio is an Electron desktop overlay assistant for high-stakes conversations and coding rounds (interviews, meetings, presentations, negotiation, exams). It captures live context from system audio + screen, transcribes user input, generates speak-ready responses, and maintains local session history.
 
----
-
-## Core Features
-
-### 1. Real-Time AI Overlay
-- Transparent, repositionable window that sits above all other applications
-- Powered by student's choice of AI provider (Gemini, Groq, Azure OpenAI, or local Ollama)
-- Click-through mode allows keyboard-only control without mouse interference
-- Full keyboard navigation and response history
-
-### 2. Session Profiles
-Pre-tuned prompt profiles for contextual assistance:
-- **Job Interview** — Technical and behavioral answer scaffolding
-- **Sales Call** — Real-time objection handling
-- **Business Meeting** — Professional communication support
-- **Presentation** — Confident speaker scripts and talking points
-- **Negotiation** — Tactical language and composed responses
-- **Exam Assistant** — Step-by-step problem solving
-
-### 3. Audio & Visual Context
-- **Continuous audio capture** — Microphone, speaker, both, or none
-- **Automatic screenshot analysis** — Periodic screen captures provide visual context
-- **Manual screen analysis** — On-demand screen parsing for problem solving
-- **Voice calibration** — Pre-session voice profiling for personalized AI tone
-
-### 4. Context Management
-- **Resume upload** — PDF/DOCX import; text silently injected into prompt context
-- **Custom instructions** — Add job descriptions, company details, constraints
-- **30+ languages** — Multi-language speech recognition and response
-- **Theme and accessibility** — Dark mode, configurable opacity, monospace typography
+This PRD reflects the **current shipped behavior in the codebase** (v0.7.0), including provider modes, overlays, shortcuts, post-answer code self-heal, calibration/voice training, storage, Supabase secret resolution, and packaging.
 
 ---
 
-## Planned Features
+## 2) Goals and Non-Goals
 
-### SA Round Simulator
+### Goals
+- Deliver real-time assistive responses with low interaction friction.
+- Support multiple AI backends (Cloud, Gemini, Groq, Azure, Local/Ollama).
+- Keep user context persistent across sessions (profiles, prompts, resume text, keybinds, history).
+- Provide coding-answer quality guardrail via a delayed verification pass.
+- Enable stealth overlay operation with keyboard-first control.
 
-A dedicated practice tool for Data Structure & Algorithm (DSA) interview rounds. Students practice explaining their solution approach out loud while simultaneously writing code or pseudo-code, simulating the live round experience.
-
-#### User Flow
-1. **Role Selection** — Student picks their target role (e.g., "SDE at TCS", "Backend Engineer at Startup", "Data Engineer at Freshworks")
-2. **Problem Assignment** — Platform retrieves 1–2 calibrated DSA problems matched to that company's actual interview difficulty (not LeetCode arbitrary levels, but _real_ company data)
-3. **Live Round** — Student has chosen time limit (typically 45–60 min) to:
-   - Talk through their approach out loud
-   - Write pseudo-code or full solution on screen
-   - System records audio the entire session
-4. **AI Coaching** — Optional real-time overlay coaching (same as main GSV features) to help guide approach selection or spot errors
-
-#### Metrics & Scoring
-
-Real-time voice analysis (using transcription + NLP) measures:
-
-- **Problem Clarification** — Did student ask clarifying questions before jumping to code?
-- **Approach Communication** — Did student explain their algorithm before writing code?
-- **Silence & Filler Analysis** — Detects thinking gaps, "umm/uh" count, long pauses (flags panic or confusion)
-- **Complexity Discussion** — Did student mention or calculate time/space complexity?
-- **Panic Recovery** — How did the student react when stuck? Did they vocalize workarounds or give up?
-
-#### Post-Round Report Card
-
-Same report structure as behavioral rounds, but for coding performance:
-
-- **Communication Score** — Clarity of explanation, completeness of problem walkthrough
-- **Approach Structure Score** — Quality of algorithm selection, optimization awareness, scalability thinking
-- **Time Management Score** — Pacing through problem, time spent on clarification vs. coding vs. edge cases
-- **Panic Recovery Score** — Composure when stuck, ability to pivot, willingness to ask for hints/guidance
-
-#### Technical Requirements
-
-- **DSA Problem Database** — Curated set of ~100–200 problems keyed by company and difficulty tier
-- **Audio Recording & Analysis** — Continuous voice capture; transcription via Whisper (local or cloud)
-- **Real-Time Transcription** — Feed transcript fragments to NLP for tone/filler detection
-- **Complexity Parser** — Optional code analysis to auto-detect if student mentioned or achieved stated complexity goals
-- **Report Generation** — Styled report card matching existing behavioral interview format
-- **Session Storage** — Store recorded session, transcript, solution code, and final report for playback and review
+### Non-Goals (Current Version)
+- No full code execution/sandbox or compiler-backed validation.
+- No complete SA Round Simulator UI/workflow yet.
+- No speaker diarization pipeline in production.
+- No strict TypeScript migration yet (current app is JavaScript).
 
 ---
 
-## Technical Architecture
+## 3) Target Users
 
-### Audio & Processing
-- Dual-stream audio capture: microphone + system audio (speaker/interviewer)
-- 16 kHz resampling standard for Whisper compatibility
-- Local transcription via Whisper.cpp (offline) or cloud STT (Azure / Gemini)
-- Voice activity detection to skip silent segments
-- Speaker diarization (optional tinydiarize for tracking speaker turns)
-
-### AI & Context
-- Modular AI provider abstraction: Gemini, Groq, Azure, Ollama
-- Prompt injection system for custom instructions, resume context, company details
-- Session profile prompt library
-- Response streaming and history navigation
-
-### Frontend
-- React 19 with React Compiler (target)
-- Shadcn/ui components for rebuilding legacy UI
-- Tailwind CSS with CSS variables for theming
-- Electron IPC with context isolation for security
-- TypeScript strict mode
-
-### Storage & Privacy
-- Local-first architecture: transcriptions, recordings, and solutions stored locally by default
-- Optional cloud upload with user consent
-- Clear data retention policies and user-controllable deletion
-- No persistent upload of sensitive data (resumes, code) without explicit permission
+- Students preparing for interviews/exams.
+- Professionals in sales, meetings, and presentations needing live phrasing support.
+- Users who prefer keyboard-driven overlays and low-friction context injection.
 
 ---
 
-## Development Roadmap
+## 4) End-to-End User Experience
 
-### Phase 1: Foundation (Current)
-- ✅ Basic overlay and real-time AI response
-- ✅ Session profiles (Interview, Presentation, etc.)
-- ✅ Audio capture and context injection
-- 🎯 Local transcription integration (Whisper.cpp)
-- 🎯 Dual audio stream support
+## 4.1 First Launch + Onboarding
+- App loads onboarding if `config.onboarded` is false.
+- Onboarding collects initial custom context and saves it to preferences.
+- User enters access token in Home view to start cloud/managed flows (or configures BYOK/local in settings).
 
-### Phase 2: SA Round Simulator
-- Problem database & company-tier mapping
-- Audio recording & real-time transcription
-- Silence/filler detection NLP
-- Report card generation
-- Session playback and review
+## 4.2 Session Start
+- User chooses profile (`interview`, `sales`, `meeting`, `presentation`, `negotiation`, `exam`).
+- If no voice profile exists and skip flag is false, calibration is shown before session.
+- On success, capture starts and app enters live assistant mode.
 
-### Phase 3: Polish & Scale
-- Full TypeScript / React migration
-- Comprehensive test coverage (Jest, RTL)
-- Performance optimization
-- International localization
-- Enterprise Azure integration
+## 4.3 Live Assistance Loop
+- System audio + transcript context are streamed to selected provider.
+- AI responses stream into Assistant view.
+- Responses are persisted into session history (conversation + screen analysis tracks).
+- User navigates multiple responses and sends follow-up text prompts.
+
+## 4.4 Post-Answer Coding Self-Heal
+- If content appears coding-related, a delayed verification pass runs after draft response generation.
+- Current implementation delay is ~1 second (`setTimeout(..., 1000)`), then candidate response is re-checked/fixed via Groq/Azure verifier when available.
+- Updated response replaces the latest assistant output if improved.
+
+## 4.5 Session End
+- Ending session stops capture/transcription and clears runtime provider secrets.
+- Session data remains in local history unless explicitly deleted by user.
+
+---
+
+## 5) Functional Requirements (Implemented)
+
+### FR-1: Overlay Window and Modes
+- Frameless, keyboard-controllable Electron window.
+- Stealth mode behavior (transparent, always-on-top, visibility toggle, click-through toggle).
+- Reposition support (dock left/right/default and layout hint-based reposition).
+
+### FR-2: Multi-Provider Runtime
+- Provider modes: Cloud, BYOK, Local.
+- Backends: cloud websocket, Gemini, Groq, Azure OpenAI, Ollama local.
+- Provider secret resolution flow for cloud token usage.
+
+### FR-3: Audio + Screen Context Ingestion
+- System audio capture via `getDisplayMedia` and platform handlers.
+- Configurable screenshot interval and image quality.
+- Screen analysis events persisted per session.
+
+### FR-4: Prompt Profiles + Context Injection
+- Built-in profile prompts in `prompts.js`.
+- Custom prompt override.
+- Resume/document text ingestion and persistence.
+
+### FR-5: Calibration / Voice Training
+- Multi-prompt calibration flow.
+- Live mic level visualization and transcription capture.
+- Voice profile observations saved for later personalization.
+
+### FR-6: History Management
+- Session list, detail view, search/filter, export, and delete workflows.
+- Conversation turns and screen-analysis tracks stored/retrieved.
+
+### FR-7: Keyboard Shortcuts
+- Move window: `Ctrl+Arrow` (or `Alt+Arrow` on macOS).
+- Toggle visibility: `Ctrl+\\`.
+- Toggle click-through: `Ctrl+M`.
+- Next step: `Ctrl+Enter`.
+- Response nav: `Ctrl+[` and `Ctrl+]`.
+- Response scroll: `Ctrl+Shift+Up/Down`.
+- Docking: `Ctrl+Shift+R/Q/T`.
+- Emergency erase: `Ctrl+Shift+X`.
+
+### FR-8: Settings and Personalization
+- Theme selection and background transparency.
+- Font size control.
+- Google search toggle.
+- Keybind remapping and persistence.
+
+### FR-9: Security-Oriented Secret Handling
+- Cloud access token resolved server-side to provider secrets.
+- Runtime in-memory secret cache for session operations.
+- Runtime secret cleanup on quit/session end.
 
 ---
 
-## Success Metrics
+## 6) UI Surface Inventory
 
-- **User Engagement** — Daily active users; avg. session duration
-- **Behavioral Interview** — User confidence ratings pre/post session; job offer conversion
-- **SA Round** — Problem solved correctly; code quality vs. baseline; communication score trend
-- **Retention** — Week-over-week return rate; practice frequency
-- **Satisfaction** — NPS; feature request volume; bug reports
+### Main Navigation Views
+- Home (`MainView`) — token entry + session start.
+- AI Context (`AICustomizeView`) — profile prompt customization + resume context.
+- History (`HistoryView`) — session browser and transcript inspection.
+- Settings (`CustomizeView`) — providers, capture options, keybinds, themes.
+- Feedback (`FeedbackView`) — user feedback form + version context.
+- Help (`HelpView`) — shortcut/help links.
+- Onboarding (`OnboardingView`) — first-run context wizard.
+- Calibration (`CalibrationView`) — voice profile training flow.
+- Assistant (`AssistantView`) — live response area.
 
 ---
+
+## 7) Architecture and Data Flow
+
+## 7.1 Main Process
+- File: `src/index.js`
+- Responsibilities:
+   - Window creation + app lifecycle.
+   - IPC registration (storage, provider init, capture controls, file parsing, versioning, external links).
+   - Auto-update integration (if configured).
+
+## 7.2 Window and Shortcut Layer
+- File: `src/utils/window.js`
+- Responsibilities:
+   - `BrowserWindow` creation and layout behavior.
+   - Global shortcut registration.
+   - View-based resize/reposition handlers.
+   - Click-through and hide/show handling.
+
+## 7.3 Renderer Orchestration
+- File: `src/utils/renderer.js`
+- Responsibilities:
+   - Consolidated global API object on `window.hintio`.
+   - Provider initialization bridges and capture calls.
+   - State/status updates routed into root component.
+   - Theme and preference application.
+
+## 7.4 Provider Runtime Core
+- File: `src/utils/providerRuntime.js`
+- Responsibilities:
+   - Session orchestration and provider-mode switching.
+   - Message/response streaming.
+   - Screen-analysis and conversation persistence hooks.
+   - Coding prompt detection + delayed self-heal verification pass.
+   - Runtime secret resolution/caching behavior.
+
+## 7.5 Provider-Specific Modules
+- `src/utils/cloud.js` — websocket cloud transport.
+- `src/utils/speechStt.js` — Whisper/Groq STT path.
+- `src/utils/azureStt.js` — Azure speech recognition path.
+- `src/utils/localai.js` — Ollama + local model support.
+
+## 7.6 Storage Layer
+- File: `src/storage.js`
+- Stores:
+   - Config, credentials, preferences, keybinds, limits, voice profile, history.
+   - OS-specific config directory under `hintio-config`.
+
+---
+
+## 8) Persistence and Data Model
+
+### Local Files (OS Config Dir)
+- `config.json`
+- `credentials.json`
+- `preferences.json`
+- `keybinds.json`
+- `limits.json`
+- `voice-profile.json`
+- `history/*.json`
+
+### Browser/Renderer Storage
+- Indexed/session state used for rendering and quick retrieval flows.
+
+### Session Data
+- Session metadata + ordered conversation turns.
+- Screen analysis snapshots/results.
+
+---
+
+## 9) Security and Privacy Behavior (Current)
+
+- Cloud token path resolves provider secrets via Supabase edge function.
+- RLS-backed token/secret enforcement exists in Supabase project assets.
+- Runtime provider secrets are cleared on session end/quit paths.
+- Web security is enabled in `BrowserWindow` options.
+
+Known security gap:
+- Context isolation is currently disabled in Electron (`contextIsolation: false`), marked as TODO.
+
+---
+
+## 10) Build and Distribution Requirements
+
+### Tooling
+- Electron Forge packaging/make workflows.
+- Windows Squirrel installer + zip outputs.
+
+### Naming
+- Product/package branding is `Hintio`.
+- Windows metadata and executable naming are `Hintio`.
+
+### Verification
+- `scripts/verify-windows-package.js` checks:
+   - `Hintio.exe`
+   - runtime DLL presence (`ffmpeg.dll`, `d3dcompiler_47.dll`)
+   - ONNX runtime native artifacts under unpacked ASAR.
+
+### Known Runtime Note
+- VC++ redistributable DLLs may be absent on clean machines and require separate runtime install.
+
+---
+
+## 11) Supabase / Cloud Backend Scope
+
+### Implemented in Repository
+- Edge function: `supabase/functions/resolve-provider-secrets/index.ts`.
+- Migrations for access token handling, quota, RLS hardening, subscriptions and premium-question schema.
+
+### App Usage
+- Client uses secret-resolution flow for cloud mode.
+- Premium schema/RLS assets exist; full premium interview-questions product surface is not yet complete in UI.
+
+---
+
+## 12) Observability and Operational Notes
+
+- Console logging for provider/session events and shortcut registration.
+- Status updates surfaced in UI (`Listening`, `Live`, errors).
+- Optional debug audio dump utilities exist.
+
+---
+
+## 13) Known Gaps / Not Yet Implemented
+
+- Full SA Round Simulator product flow/UI and scoring surfaces.
+- Full dual-stream diarization pipeline (speaker-separated streams) in production UI.
+- Automated test suite (unit/integration/e2e) is not yet present.
+- TypeScript strict-mode migration has not been completed.
+- Context isolation hardening remains pending.
+
+---
+
+## 14) Acceptance Criteria for “Current Product”
+
+The current codebase is considered feature-complete for v0.7.0 when:
+- App launches and navigates all listed views.
+- Session can start in configured provider mode and produce responses.
+- Shortcuts function as mapped.
+- Coding responses trigger delayed self-heal path when coding signals are detected.
+- Voice calibration can run and persist a profile.
+- Session history can be viewed and managed.
+- Windows builds output Hintio-branded artifacts and pass package verification.
+
+---
+
+## 15) Future Requirements Backlog (Post-v0.7.0)
+
+- Convert post-answer code verification delay to configurable value (e.g., 1s/3s/5s).
+- Add SA Round Simulator UI + report-card workflow.
+- Complete context isolation + preload-only API bridge.
+- Add automated test infrastructure.
+- Expand premium content delivery UI for premium-question schema already present in backend.

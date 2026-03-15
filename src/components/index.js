@@ -1,5 +1,5 @@
 // Main app components
-export { CheatingDaddyApp } from './app/CheatingDaddyApp.js';
+export { HintioApp } from './app/HintioApp.js';
 export { AppHeader } from './app/AppHeader.js';
 
 // View components

@@ -1,6 +1,6 @@
 const { Ollama } = require('ollama');
 const { getSystemPrompt } = require('./prompts');
-const { sendToRenderer, initializeNewSession, saveConversationTurn } = require('./gemini');
+const { sendToRenderer, initializeNewSession, saveConversationTurn } = require('./providerRuntime');
 
 // ── State ──
 

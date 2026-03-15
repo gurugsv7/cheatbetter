@@ -205,33 +205,33 @@ function buildCombinedContext(prefs) {
     return custom;
 }
 
-async function initializeGemini(profile = 'interview', language = 'en-US') {
+async function initializeAzure(profile = 'interview', language = 'en-US') {
     const accessToken = await storage.getAccessToken();
     if (!accessToken || !accessToken.trim()) {
         lastInitErrorMessage = 'Access token is required.';
-        cheatingDaddy.setStatus('error');
+        hintio.setStatus('error');
         return false;
     }
 
     const preflight = await getProviderSecrets(accessToken.trim(), { consume: false });
     if (!preflight?.success) {
         lastInitErrorMessage = parseAccessTokenErrorMessage(preflight?.error);
-        cheatingDaddy.setStatus(lastInitErrorMessage);
+        hintio.setStatus(lastInitErrorMessage);
         return false;
     }
 
     const prefs = await storage.getPreferences();
-    const success = await ipcRenderer.invoke('initialize-gemini', accessToken.trim(), buildCombinedContext(prefs), profile, language);
+    const success = await ipcRenderer.invoke('initialize-azure', accessToken.trim(), buildCombinedContext(prefs), profile, language);
     if (success) {
         lastInitErrorMessage = '';
-        cheatingDaddy.setStatus('Live');
+        hintio.setStatus('Live');
         return true;
     }
 
     if (!lastInitErrorMessage) {
         lastInitErrorMessage = 'Unable to start session with this access token.';
     }
-    cheatingDaddy.setStatus('error');
+    hintio.setStatus('error');
     return false;
 }
 
@@ -309,10 +309,10 @@ async function initializeLocal(profile = 'interview') {
 
     const success = await ipcRenderer.invoke('initialize-local', ollamaHost, ollamaModel, whisperModel, profile, customPrompt);
     if (success) {
-        cheatingDaddy.setStatus('Local AI Live');
+        hintio.setStatus('Local AI Live');
         return true;
     } else {
-        cheatingDaddy.setStatus('error');
+        hintio.setStatus('error');
         return false;
     }
 }
@@ -321,17 +321,17 @@ async function initializeCloud(profile = 'interview') {
     const creds = await storage.getCredentials();
     const token = creds.cloudToken;
     if (!token || !token.trim()) {
-        cheatingDaddy.setStatus('error');
+        hintio.setStatus('error');
         return false;
     }
 
     const prefs = await storage.getPreferences();
     const success = await ipcRenderer.invoke('initialize-cloud', token, profile, buildCombinedContext(prefs));
     if (success) {
-        cheatingDaddy.setStatus('Live');
+        hintio.setStatus('Live');
         return true;
     } else {
-        cheatingDaddy.setStatus('error');
+        hintio.setStatus('error');
         return false;
     }
 }
@@ -339,7 +339,7 @@ async function initializeCloud(profile = 'interview') {
 // Listen for status updates
 ipcRenderer.on('update-status', (event, status) => {
     console.log('Status update:', status);
-    cheatingDaddy.setStatus(status);
+    hintio.setStatus(status);
 });
 
 async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'medium') {
@@ -522,7 +522,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
         console.log('Manual mode enabled - screenshots will be captured on demand only');
     } catch (err) {
         console.error('Error starting capture:', err);
-        cheatingDaddy.setStatus('error');
+        hintio.setStatus('error');
     }
 }
 
@@ -849,7 +849,7 @@ async function captureManualScreenshot(imageQuality = null) {
                     // Response already displayed via streaming events (new-response/update-response)
                 } else {
                     console.error('Failed to get image response:', result.error);
-                    cheatingDaddy.addNewResponse(`Error: ${result.error}`);
+                    hintio.addNewResponse(`Error: ${result.error}`);
                 }
             };
             reader.readAsDataURL(blob);
@@ -906,7 +906,7 @@ function stopCapture() {
     offscreenContext = null;
 }
 
-// Send text message to Gemini
+// Send text message via active provider runtime
 async function sendTextMessage(text) {
     if (!text || text.trim().length === 0) {
         console.warn('Cannot send empty text message');
@@ -916,7 +916,7 @@ async function sendTextMessage(text) {
     // Route typed messages to the correct profile.
     // Typed input is almost always a direct question to the AI, not interview audio
     // transcription — so default to 'exam' (general tutor) rather than 'interview'.
-    let profile = window.cheatingDaddy?.element()?.selectedProfile || 'interview';
+    let profile = window.hintio?.element()?.selectedProfile || 'interview';
 
     const codingPattern = /(code|function|algorithm|script|program|implement|debug|error|bug|fix|class|object|array|loop|recursion|sql|query|api|regex|json|html|css|javascript|python|java|typescript|react|node|express|django|flask|spring|bash|shell|git|docker|kubernetes|linux|terminal|database|http|async|promise|callback|lambda|deploy|build|compile|sort|search|binary|tree|graph|linked list|stack|queue|heap|hash|dynamic programming)/i;
     const directQuestionPattern = /^(give me|write|create|generate|show me|explain|what is|what are|how (do|does|can|to)|why (is|does|do|did)|when (is|was)|where (is|does)|who (is|are)|define|describe|list|compare|difference between|help me|can you|could you|i need|make me|build|design|calculate|solve|find|tell me|summarize)/i;
@@ -994,11 +994,11 @@ ipcRenderer.on('clear-sensitive-data', async () => {
 
 // Handle shortcuts based on current view
 function handleShortcut(shortcutKey) {
-    const currentView = cheatingDaddy.getCurrentView();
+    const currentView = hintio.getCurrentView();
 
     if (shortcutKey === 'ctrl+enter' || shortcutKey === 'cmd+enter') {
         if (currentView === 'main') {
-            cheatingDaddy.element().handleStart();
+            hintio.element().handleStart();
         } else {
             captureManualScreenshot();
         }
@@ -1006,7 +1006,7 @@ function handleShortcut(shortcutKey) {
     }
 
     if (shortcutKey === 'coding-dock' || shortcutKey === 'dock-left') {
-        const app = cheatingDaddy.element();
+        const app = hintio.element();
         if (!app) return;
 
         // Switch to coding-oriented profile and persist preference.
@@ -1015,13 +1015,13 @@ function handleShortcut(shortcutKey) {
         if (typeof app.handleProfileChange === 'function') {
             app.handleProfileChange('exam').catch(() => {});
         } else {
-            cheatingDaddy.storage.updatePreference('selectedProfile', 'exam').catch(() => {});
+            hintio.storage.updatePreference('selectedProfile', 'exam').catch(() => {});
         }
 
         // Default coding layout assumption: editor/input is on the right,
         // so dock overlay to the left full-height pane.
-        if (typeof cheatingDaddy.repositionWindow === 'function') {
-            cheatingDaddy.repositionWindow('right');
+        if (typeof hintio.repositionWindow === 'function') {
+            hintio.repositionWindow('right');
         }
 
         if (typeof app.requestUpdate === 'function') {
@@ -1031,23 +1031,23 @@ function handleShortcut(shortcutKey) {
     }
 
     if (shortcutKey === 'dock-right') {
-        if (typeof cheatingDaddy.repositionWindow === 'function') {
+        if (typeof hintio.repositionWindow === 'function') {
             // Put overlay on right side full-height
             // (means input/editor area is likely on the left)
-            cheatingDaddy.repositionWindow('left');
+            hintio.repositionWindow('left');
         }
         return;
     }
 
     if (shortcutKey === 'dock-default') {
-        if (typeof cheatingDaddy.repositionWindow === 'function') {
-            cheatingDaddy.repositionWindow('default');
+        if (typeof hintio.repositionWindow === 'function') {
+            hintio.repositionWindow('default');
         }
     }
 }
 
 // Create reference to the main app element
-const cheatingDaddyApp = document.querySelector('cheating-daddy-app');
+const hintioApp = document.querySelector('hintio-app');
 
 // ============ THEME SYSTEM ============
 const theme = {
@@ -1327,26 +1327,26 @@ const theme = {
     },
 };
 
-// Consolidated cheatingDaddy object - all functions in one place
-const cheatingDaddy = {
+// Consolidated hintio object - all functions in one place
+const hintio = {
     // App version
     getVersion: async () => ipcRenderer.invoke('get-app-version'),
 
     // Element access
-    element: () => cheatingDaddyApp,
-    e: () => cheatingDaddyApp,
+    element: () => hintioApp,
+    e: () => hintioApp,
 
     // App state functions - access properties directly from the app element
-    getCurrentView: () => cheatingDaddyApp.currentView,
-    getLayoutMode: () => cheatingDaddyApp.layoutMode,
+    getCurrentView: () => hintioApp.currentView,
+    getLayoutMode: () => hintioApp.layoutMode,
 
     // Status and response functions
-    setStatus: text => cheatingDaddyApp.setStatus(text),
-    addNewResponse: response => cheatingDaddyApp.addNewResponse(response),
-    updateCurrentResponse: response => cheatingDaddyApp.updateCurrentResponse(response),
+    setStatus: text => hintioApp.setStatus(text),
+    addNewResponse: response => hintioApp.addNewResponse(response),
+    updateCurrentResponse: response => hintioApp.updateCurrentResponse(response),
 
     // Core functionality
-    initializeGemini,
+    initializeAzure,
     initializeCloud,
     initializeLocal,
     startCapture,
@@ -1374,7 +1374,7 @@ const cheatingDaddy = {
 };
 
 // Make it globally available
-window.cheatingDaddy = cheatingDaddy;
+window.hintio = hintio;
 
 // Load theme after DOM is ready
 if (document.readyState === 'loading') {

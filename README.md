@@ -1,8 +1,8 @@
-# GSV
+# Hintio
 
 > Real-time AI assistance during interviews, meetings, and presentations — invisible overlay, powered by your choice of AI.
 
-GSV is an Electron desktop app that captures your screen and audio to deliver contextual, ready-to-speak AI responses in real time. It sits as a transparent, always-on-top overlay that you can reposition and hide instantly.
+Hintio is an Electron desktop app that captures your screen and audio to deliver contextual, ready-to-speak AI responses in real time. It sits as a transparent, always-on-top overlay that you can reposition and hide instantly.
 
 > [!NOTE]
 > Use the latest macOS or Windows version. Older OS versions have limited support.
@@ -73,7 +73,7 @@ Share one of these outputs:
 - `out/make/squirrel.windows/x64/*.exe` (installer)
 - `out/make/zip/win32/x64/*.zip` (portable bundle)
 
-Do not share only `out/GSV-win32-x64/GSV.exe` by itself.
+Do not share only `out/Hintio-win32-x64/Hintio.exe` by itself.
 
 Optional: if you want to ship extra Windows prerequisites in-app (for support/troubleshooting), place them under `build/windows/` before packaging. The folder is included in packaged resources when present.
 

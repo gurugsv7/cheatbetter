@@ -2,9 +2,9 @@ const fs = require('fs');
 const path = require('path');
 
 const rootDir = path.resolve(__dirname, '..');
-const appDir = path.join(rootDir, 'out', 'GSV-win32-x64');
+const appDir = path.join(rootDir, 'out', 'Hintio-win32-x64');
 const requiredTopLevelFiles = [
-    'GSV.exe',
+    'Hintio.exe',
     'ffmpeg.dll',
     'd3dcompiler_47.dll',
 ];

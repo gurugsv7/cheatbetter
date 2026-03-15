@@ -18,9 +18,9 @@ const {
 const supabaseConfig = require('./supabaseConfig');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 const azureStt = require('./azureStt');
-const geminiStt = require('./geminiStt');
+const speechStt = require('./speechStt');
 
-// Lazy-loaded to avoid circular dependency (localai.js imports from gemini.js)
+// Lazy-loaded to avoid circular dependency (localai.js imports from providerRuntime.js)
 let _localai = null;
 function getLocalAi() {
     if (!_localai) _localai = require('./localai');
@@ -46,8 +46,66 @@ let currentVoiceProfile = null;
 let runtimeProviderSecrets = null;
 let runtimeSecretsToken = '';
 let runtimeSecretsResolvedAt = 0;
+let lastAcceptedTranscriptNormalized = '';
+let lastAcceptedTranscriptAt = 0;
+let lastAzureResponseCompletedAt = 0;
+let isAzureResponseInFlight = false;
 
 const PROVIDER_SECRETS_CACHE_TTL_MS = 30 * 60 * 1000;
+const MIN_TURN_WORDS = 4;
+const MIN_INTERVIEWER_TURN_GAP_MS = 7000;
+const DUPLICATE_TRANSCRIPT_WINDOW_MS = 25000;
+
+function normalizeTranscriptForGate(text = '') {
+    return String(text || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s?]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function isQuestionLikeTurn(normalizedText = '') {
+    if (!normalizedText) return false;
+
+    const hasQuestionMark = normalizedText.includes('?');
+    const startsWithQuestionCue = /^(what|why|how|when|where|who|which|can|could|would|do|does|did|is|are|was|were)\b/.test(normalizedText);
+    const startsWithPromptCue = /^(tell me|walk me through|explain|describe|compare|implement|write|build|design|solve|give me|can you|could you|would you)\b/.test(normalizedText);
+
+    return hasQuestionMark || startsWithQuestionCue || startsWithPromptCue;
+}
+
+function shouldDispatchInterviewerTurn(transcription = '') {
+    const normalized = normalizeTranscriptForGate(transcription);
+    if (!normalized) return { accept: false, reason: 'empty', normalized };
+
+    const words = normalized.split(' ').filter(Boolean);
+    if (words.length < MIN_TURN_WORDS) {
+        return { accept: false, reason: 'too-short', normalized };
+    }
+
+    if (!isQuestionLikeTurn(normalized)) {
+        return { accept: false, reason: 'not-question-like', normalized };
+    }
+
+    const now = Date.now();
+    const recentlyAnswered = lastAzureResponseCompletedAt > 0 && (now - lastAzureResponseCompletedAt) < MIN_INTERVIEWER_TURN_GAP_MS;
+    if (recentlyAnswered) {
+        return { accept: false, reason: 'cooldown', normalized };
+    }
+
+    const isDuplicate =
+        lastAcceptedTranscriptNormalized
+        && normalized === lastAcceptedTranscriptNormalized
+        && (now - lastAcceptedTranscriptAt) < DUPLICATE_TRANSCRIPT_WINDOW_MS;
+
+    if (isDuplicate) {
+        return { accept: false, reason: 'duplicate', normalized };
+    }
+
+    lastAcceptedTranscriptNormalized = normalized;
+    lastAcceptedTranscriptAt = now;
+    return { accept: true, reason: 'accepted', normalized };
+}
 
 function getEffectiveApiKey() {
     return runtimeProviderSecrets?.geminiApiKey || getApiKey();
@@ -775,6 +833,11 @@ async function sendToGroq(transcription) {
 const AZURE_FAST_SYSTEM_PROMPT = `You are an interview assistant helping a software professional in India. Give ready-to-speak answers in natural Indian English — direct, 3-5 spoken sentences, no bullet points, no markdown headers, no bold labels. Use connectors like "so", "basically", "see", "what happens is". For coding questions: brief explanation of approach first (2-3 sentences), then clean code. Output ONLY the words the user will speak.`;
 
 async function sendToAzure(transcription) {
+    if (isAzureResponseInFlight) {
+        console.log('[TurnGate] Azure response already in flight, skipping transcript');
+        return;
+    }
+
     const azureApiKey = getEffectiveAzureApiKey();
     const azureEndpoint = getEffectiveAzureEndpoint();
     const azureDeployment = getEffectiveAzureDeployment();
@@ -790,6 +853,8 @@ async function sendToAzure(transcription) {
     }
 
     console.log(`Sending to Azure OpenAI (${azureDeployment}):`, transcription.substring(0, 100) + '...');
+
+    isAzureResponseInFlight = true;
 
     groqConversationHistory.push({
         role: 'user',
@@ -912,10 +977,13 @@ async function sendToAzure(transcription) {
         }
 
         console.log(`Azure OpenAI response completed (${azureDeployment})`);
+        lastAzureResponseCompletedAt = Date.now();
         sendToRenderer('update-status', 'Listening...');
     } catch (error) {
         console.error('Error calling Azure OpenAI API:', error);
         sendToRenderer('update-status', 'Azure error: ' + error.message);
+    } finally {
+        isAzureResponseInFlight = false;
     }
 }
 
@@ -1133,7 +1201,7 @@ async function sendToGemma(transcription) {
     }
 }
 
-async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'interview', language = 'en-US', isReconnect = false) {
+async function initializeLegacyLiveSession(apiKey, customPrompt = '', profile = 'interview', language = 'en-US', isReconnect = false) {
     if (isInitializingSession) {
         console.log('Session initialization already in progress');
         return false;
@@ -1276,7 +1344,7 @@ async function attemptReconnect() {
     await new Promise(resolve => setTimeout(resolve, RECONNECT_DELAY));
 
     try {
-        const session = await initializeGeminiSession(
+        const session = await initializeLegacyLiveSession(
             sessionParams.apiKey,
             sessionParams.customPrompt,
             sessionParams.profile,
@@ -1284,8 +1352,8 @@ async function attemptReconnect() {
             true // isReconnect
         );
 
-        if (session && global.geminiSessionRef) {
-            global.geminiSessionRef.current = session;
+        if (session && global.providerSessionRef) {
+            global.providerSessionRef.current = session;
 
             // Restore context from conversation history via text message
             const contextMessage = buildContextMessage();
@@ -1353,7 +1421,7 @@ function killExistingSystemAudioDump() {
     });
 }
 
-async function startMacOSAudioCapture(geminiSessionRef) {
+async function startMacOSAudioCapture(providerSessionRef) {
     if (process.platform !== 'darwin') return false;
 
     // Kill any existing SystemAudioDump processes first
@@ -1412,10 +1480,8 @@ async function startMacOSAudioCapture(geminiSessionRef) {
                 getLocalAi().processLocalAudio(monoChunk);
             } else {
                 const base64Data = monoChunk.toString('base64');
-                if (geminiStt.isGeminiSTTActive()) {
-                    geminiStt.pushAudio(base64Data);
-                } else {
-                    sendAudioToGemini(base64Data, geminiSessionRef);
+                if (speechStt.isSpeechSTTActive()) {
+                    speechStt.pushAudio(base64Data);
                 }
             }
 
@@ -1468,12 +1534,12 @@ function stopMacOSAudioCapture() {
     }
 }
 
-async function sendAudioToGemini(base64Data, geminiSessionRef) {
-    if (!geminiSessionRef.current) return;
+async function sendAudioToLegacyLiveSession(base64Data, providerSessionRef) {
+    if (!providerSessionRef.current) return;
 
     try {
         process.stdout.write('.');
-        await geminiSessionRef.current.sendRealtimeInput({
+        await providerSessionRef.current.sendRealtimeInput({
             audio: {
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=24000',
@@ -1484,7 +1550,7 @@ async function sendAudioToGemini(base64Data, geminiSessionRef) {
     }
 }
 
-async function sendImageToGeminiHttp(base64Data, prompt) {
+async function sendImageToLegacyHttp(base64Data, prompt) {
     // Get available model based on rate limits
     const model = getAvailableModel();
 
@@ -1579,9 +1645,9 @@ async function sendImageToGeminiHttp(base64Data, prompt) {
     }
 }
 
-function setupGeminiIpcHandlers(geminiSessionRef) {
-    // Store the geminiSessionRef globally for reconnection access
-    global.geminiSessionRef = geminiSessionRef;
+function setupProviderRuntimeIpcHandlers(providerSessionRef) {
+    // Store the providerSessionRef globally for reconnection access
+    global.providerSessionRef = providerSessionRef;
 
     ipcMain.handle('resolve-provider-secrets', async (event, accessToken, options = {}) => {
         try {
@@ -1620,7 +1686,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
-    ipcMain.handle('initialize-gemini', async (event, apiKey, customPrompt, profile = 'interview', language = 'en-US') => {
+    ipcMain.handle('initialize-azure', async (event, apiKey, customPrompt, profile = 'interview', language = 'en-US') => {
         currentProviderMode = 'byok';
 
         try {
@@ -1649,38 +1715,39 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             }
         }
 
-        // If Azure keys are configured, use Groq Whisper STT + Azure OpenAI — skip Gemini Live entirely
-        if (hasAzureKey()) {
-            const groqKey = getEffectiveGroqApiKey();
-            if (!groqKey) {
-                console.error('[Init] Azure mode requires a Groq API key for STT — add it in settings');
-                sendToRenderer('update-status', 'Groq STT key not configured in Supabase');
-                return false;
+        if (!hasAzureKey()) {
+            sendToRenderer('update-status', 'Azure OpenAI credentials are not configured');
+            return false;
+        }
+
+        const groqKey = getEffectiveGroqApiKey();
+        if (!groqKey) {
+            console.error('[Init] Azure mode requires a Groq API key for STT — add it in settings');
+            sendToRenderer('update-status', 'Groq STT key not configured in Supabase');
+            return false;
+        }
+
+        currentProfile = profile;
+        currentCustomPrompt = customPrompt;
+        const googleSearchEnabled = false;
+        currentSystemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled, null);
+        initializeNewSession(profile, customPrompt);
+
+        speechStt.startSpeechSTT(groqKey, language, (transcription) => {
+            const gate = shouldDispatchInterviewerTurn(transcription);
+            if (!gate.accept) {
+                console.log(`[TurnGate] Ignored transcript (${gate.reason}):`, String(transcription || '').slice(0, 120));
+                sendToRenderer('update-status', 'Listening...');
+                return;
             }
-            currentProfile = profile;
-            currentCustomPrompt = customPrompt;
-            const googleSearchEnabled = false;
-            currentSystemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled, null);
-            initializeNewSession(profile, customPrompt);
-
-            // Groq Whisper STT → Azure OpenAI for answers
-            geminiStt.startGeminiSTT(groqKey, language, (transcription) => {
-                sendToRenderer('update-status', 'Processing...');
-                sendToAzure(transcription);
-            });
-            geminiSessionRef.stopSTT = () => geminiStt.stopGeminiSTT();
-            sendToRenderer('update-status', 'Listening...');
-            console.log('[Init] Groq Whisper STT started — Azure OpenAI will handle responses');
-            return true;
-        }
-
-        // Fallback: use Gemini Live for STT when no Azure keys
-        const session = await initializeGeminiSession(getEffectiveApiKey(), customPrompt, profile, language);
-        if (session) {
-            geminiSessionRef.current = session;
-            return true;
-        }
-        return false;
+            sendToRenderer('update-status', 'Processing...');
+            sendToAzure(transcription);
+        });
+        providerSessionRef.stopSTT = () => speechStt.stopSpeechSTT();
+        providerSessionRef.current = null;
+        sendToRenderer('update-status', 'Listening...');
+        console.log('[Init] Groq Whisper STT started — Azure OpenAI will handle responses');
+        return true;
     });
 
     ipcMain.handle('initialize-local', async (event, ollamaHost, ollamaModel, whisperModel, profile, customPrompt) => {
@@ -1713,22 +1780,12 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: false, error: error.message };
             }
         }
-        // Gemini STT path — push audio to Gemini speech-to-text
-        if (geminiStt.isGeminiSTTActive()) {
-            geminiStt.pushAudio(data);
+        // Azure STT path — push audio to speech-to-text buffer
+        if (speechStt.isSpeechSTTActive()) {
+            speechStt.pushAudio(data);
             return { success: true };
         }
-        if (!geminiSessionRef.current) return { success: false, error: 'No active session' };
-        try {
-            process.stdout.write('.');
-            await geminiSessionRef.current.sendRealtimeInput({
-                audio: { data: data, mimeType: mimeType },
-            });
-            return { success: true };
-        } catch (error) {
-            console.error('Error sending system audio:', error);
-            return { success: false, error: error.message };
-        }
+        return { success: false, error: 'Azure STT is not initialized' };
     });
 
     // Handle microphone audio on a separate channel
@@ -1753,22 +1810,12 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: false, error: error.message };
             }
         }
-        // Gemini STT path — mic audio also goes to Gemini STT
-        if (geminiStt.isGeminiSTTActive()) {
-            geminiStt.pushAudio(data);
+        // Azure STT path — mic audio also goes to speech-to-text buffer
+        if (speechStt.isSpeechSTTActive()) {
+            speechStt.pushAudio(data);
             return { success: true };
         }
-        if (!geminiSessionRef.current) return { success: false, error: 'No active session' };
-        try {
-            process.stdout.write(',');
-            await geminiSessionRef.current.sendRealtimeInput({
-                audio: { data: data, mimeType: mimeType },
-            });
-            return { success: true };
-        } catch (error) {
-            console.error('Error sending mic audio:', error);
-            return { success: false, error: error.message };
-        }
+        return { success: false, error: 'Azure STT is not initialized' };
     });
 
     ipcMain.handle('send-image-content', async (event, { data, prompt }) => {
@@ -1800,14 +1847,11 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return result;
             }
 
-            // Use Azure if configured, otherwise fall back to Gemini
-            if (hasAzureKey()) {
-                const result = await sendImageToAzure(data, prompt);
-                return result;
+            if (!hasAzureKey()) {
+                return { success: false, error: 'Azure OpenAI credentials are not configured' };
             }
 
-            // Use HTTP API instead of realtime session
-            const result = await sendImageToGeminiHttp(data, prompt);
+            const result = await sendImageToAzure(data, prompt);
             return result;
         } catch (error) {
             console.error('Error sending image:', error);
@@ -1862,10 +1906,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             }
         }
 
-        // --- BYOK mode ---
-        // Groq / Azure / Gemma can answer typed questions without a live
-        // Gemini session.  Only forward to the live session when none of the
-        // richer providers are configured.
+        // --- BYOK mode (Azure only) ---
         try {
             console.log('Sending text message via BYOK:', text, '| profile:', resolvedProfile);
 
@@ -1874,23 +1915,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: true };
             }
 
-            if (hasGroqKey()) {
-                sendToGroq(text.trim());
-                return { success: true };
-            }
-
-            // Gemma (Gemini HTTP) — works without a live session
-            if (getEffectiveApiKey()) {
-                sendToGemma(text.trim());
-                return { success: true };
-            }
-
-            // Last resort: try the live Gemini session
-            if (!geminiSessionRef.current) {
-                return { success: false, error: 'No active session. Please press Start or configure an API key.' };
-            }
-            await geminiSessionRef.current.sendRealtimeInput({ text: text.trim() });
-            return { success: true };
+            return { success: false, error: 'Azure OpenAI credentials are not configured' };
         } catch (error) {
             console.error('Error sending text:', error);
             return { success: false, error: error.message };
@@ -1906,7 +1931,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
 
         try {
-            const success = await startMacOSAudioCapture(geminiSessionRef);
+            const success = await startMacOSAudioCapture(providerSessionRef);
             return { success };
         } catch (error) {
             console.error('Error starting macOS audio capture:', error);
@@ -1945,15 +1970,15 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             isUserClosing = true;
             sessionParams = null;
 
-            // Stop Gemini STT if active
-            if (geminiStt.isGeminiSTTActive()) {
-                geminiStt.stopGeminiSTT();
+            // Stop speech STT if active
+            if (speechStt.isSpeechSTTActive()) {
+                speechStt.stopSpeechSTT();
             }
 
-            // Cleanup Gemini session if present
-            if (geminiSessionRef.current) {
-                await geminiSessionRef.current.close();
-                geminiSessionRef.current = null;
+            // Cleanup provider session if present
+            if (providerSessionRef.current) {
+                await providerSessionRef.current.close();
+                providerSessionRef.current = null;
             }
 
             return { success: true };
@@ -1997,7 +2022,6 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 }
 
 module.exports = {
-    initializeGeminiSession,
     getEnabledTools,
     getStoredSetting,
     sendToRenderer,
@@ -2008,9 +2032,7 @@ module.exports = {
     startMacOSAudioCapture,
     convertStereoToMono,
     stopMacOSAudioCapture,
-    sendAudioToGemini,
-    sendImageToGeminiHttp,
-    setupGeminiIpcHandlers,
+    setupProviderRuntimeIpcHandlers,
     formatSpeakerResults,
     clearRuntimeProviderSecrets,
 };

@@ -94,8 +94,8 @@ function resample24to16(buf) {
     return out;
 }
 
-function startGeminiSTT(apiKey, lang, onTranscript) {
-    if (isStarted) stopGeminiSTT();
+function startSpeechSTT(apiKey, lang, onTranscript) {
+    if (isStarted) stopSpeechSTT();
 
     if (!apiKey || apiKey.trim() === '') {
         console.error('[GroqSTT] Cannot start — Groq API key is empty');
@@ -141,11 +141,11 @@ function pushAudio(base64PcmData) {
             }
         }
     } catch (err) {
-        console.error('[GeminiSTT] Push error:', err.message);
+        console.error('[SpeechSTT] Push error:', err.message);
     }
 }
 
-function stopGeminiSTT() {
+    function stopSpeechSTT() {
     if (silenceTimer) {
         clearTimeout(silenceTimer);
         silenceTimer = null;
@@ -160,8 +160,8 @@ function stopGeminiSTT() {
     console.log('[GroqSTT] Stopped');
 }
 
-function isGeminiSTTActive() {
+function isSpeechSTTActive() {
     return isStarted;
 }
 
-module.exports = { startGeminiSTT, pushAudio, stopGeminiSTT, isGeminiSTTActive };
+module.exports = { startSpeechSTT, pushAudio, stopSpeechSTT, isSpeechSTTActive };
