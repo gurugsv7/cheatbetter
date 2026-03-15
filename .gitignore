@@ -93,3 +93,6 @@ typings/
 out/
 .specstory
 .specstory/
+
+# Supabase generated key dumps
+supabase/generated-access-keys-*.txt
