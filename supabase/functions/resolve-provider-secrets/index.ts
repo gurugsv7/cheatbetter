@@ -23,6 +23,11 @@ type ResolveRow = {
     interviews_used: number;
 };
 
+type RequestPayload = {
+    accessToken?: string;
+    consume?: boolean;
+};
+
 Deno.serve(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
@@ -59,11 +64,13 @@ Deno.serve(async (req: Request) => {
         ? authHeader.slice(7).trim()
         : '';
 
+    let payload: RequestPayload = {};
     let consume = false;
     try {
-        const body = (await req.json().catch(() => ({}))) as { accessToken?: string; consume?: boolean };
-        consume = Boolean(body.consume);
+        payload = (await req.json().catch(() => ({}))) as RequestPayload;
+        consume = Boolean(payload.consume);
     } catch {
+        payload = {};
         consume = false;
     }
 
@@ -106,23 +113,27 @@ Deno.serve(async (req: Request) => {
         });
     }
 
+    const includeSecrets = consume;
+
     return new Response(
         JSON.stringify({
             success: true,
             data: {
                 tokenId: row.token_id,
                 providerMode: row.provider_mode,
-                geminiApiKey: row.gemini_api_key ?? '',
-                groqApiKey: row.groq_api_key ?? '',
-                azureApiKey: row.azure_api_key ?? '',
-                azureEndpoint: row.azure_endpoint ?? '',
-                azureDeployment: row.azure_deployment ?? '',
-                cloudToken: row.cloud_token ?? '',
+                geminiApiKey: includeSecrets ? (row.gemini_api_key ?? '') : '',
+                groqApiKey: includeSecrets ? (row.groq_api_key ?? '') : '',
+                azureApiKey: includeSecrets ? (row.azure_api_key ?? '') : '',
+                azureEndpoint: includeSecrets ? (row.azure_endpoint ?? '') : '',
+                azureDeployment: includeSecrets ? (row.azure_deployment ?? '') : '',
+                cloudToken: includeSecrets ? (row.cloud_token ?? '') : '',
                 expiresAt: row.expires_at,
                 metadata: row.metadata ?? {},
                 maxInterviews: row.max_interviews ?? 0,
                 interviewsUsed: row.interviews_used ?? 0,
                 interviewsRemaining: Math.max(0, (row.max_interviews ?? 0) - (row.interviews_used ?? 0)),
+                creditConsumed: consume,
+                secretsIssued: includeSecrets,
             },
         }),
         {

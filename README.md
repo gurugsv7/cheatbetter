@@ -59,6 +59,32 @@ npm install
 npm start
 ```
 
+## Windows Build & Distribution
+
+Use release artifacts, not a single copied `.exe` file.
+
+```bash
+npm run make:win
+```
+
+This command builds Windows artifacts and verifies bundled runtime files (`ffmpeg.dll`, VC++ runtime DLLs, and ONNX runtime binaries).
+
+Share one of these outputs:
+- `out/make/squirrel.windows/x64/*.exe` (installer)
+- `out/make/zip/win32/x64/*.zip` (portable bundle)
+
+Do not share only `out/GSV-win32-x64/GSV.exe` by itself.
+
+Optional: if you want to ship extra Windows prerequisites in-app (for support/troubleshooting), place them under `build/windows/` before packaging. The folder is included in packaged resources when present.
+
+## Clean-Machine Test (Windows Sandbox)
+
+1. Enable **Windows Sandbox** in Windows Features.
+2. Build using `npm run make:win`.
+3. Copy installer (`squirrel.windows`) or portable zip into Sandbox.
+4. Install/run and confirm app launches with no missing DLL errors.
+5. If a dependency error appears, capture the exact message and filename (e.g. `VCRUNTIME140.dll`, `ffmpeg.dll`) for targeted fixes.
+
 For **BYOK** mode, you need **one** of the following — not all:
 - **Gemini** — get a free key at [Google AI Studio](https://aistudio.google.com/apikey)
 - **Groq** — get a key at [console.groq.com](https://console.groq.com)

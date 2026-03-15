@@ -7,7 +7,10 @@
     "scripts": {
         "start": "electron-forge start",
         "package": "electron-forge package",
+        "package:win": "electron-forge package --platform=win32 --arch=x64",
+        "verify:win-package": "node scripts/verify-windows-package.js",
         "make": "electron-forge make",
+        "make:win": "electron-forge make --platform=win32 --arch=x64 && npm run verify:win-package",
         "publish": "electron-forge publish",
         "lint": "echo \"No linting configured\""
     },
@@ -18,8 +21,8 @@
         "GSV ai assistant for interviews"
     ],
     "author": {
-        "name": "sohzm",
-        "email": "sohambharambe9@gmail.com"
+        "name": "gurugsv",
+        "email": "gurugsv@users.noreply.github.com"
     },
     "license": "GPL-3.0",
     "dependencies": {

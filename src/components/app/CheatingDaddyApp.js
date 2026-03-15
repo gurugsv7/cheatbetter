@@ -23,29 +23,39 @@ export class CheatingDaddyApp extends LitElement {
 
         /* ── Animations ── */
 
-        @keyframes rail-fade-in {
-            from { opacity: 0; transform: translateX(-8px); }
-            to   { opacity: 1; transform: translateX(0); }
-        }
-
-        @keyframes icon-scan {
-            0%   { background-position: 0 -100%; }
-            100% { background-position: 0 200%; }
-        }
-
-        @keyframes status-blink {
+        @keyframes status-pulse {
             0%,100% { opacity: 1; }
-            50%      { opacity: 0.3; }
+            50%      { opacity: 0.4; }
         }
 
-        @keyframes update-pulse {
-            0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
-            50%      { box-shadow: 0 0 0 4px rgba(239,68,68,0); }
-        }
-
-        /* ── Host ── */
+        /* ── Host — re-declare all tokens so shadow DOM can resolve them ── */
 
         :host {
+            --accent:         #6366F1;
+            --accent-hover:   #4F46E5;
+            --accent-glow:    rgba(99, 102, 241, 0.25);
+            --bg-app:         #09090B;
+            --bg-surface:     #0F0F12;
+            --bg-elevated:    #18181B;
+            --bg-hover:       #1E1E24;
+            --text-primary:   #FAFAFA;
+            --text-secondary: #A1A1AA;
+            --text-muted:     #52525B;
+            --border:         #27272A;
+            --border-strong:  #3F3F46;
+            --success:        #22C55E;
+            --warning:        #F59E0B;
+            --danger:         #EF4444;
+            --radius-sm:      6px;
+            --radius-md:      10px;
+            --radius-lg:      16px;
+            --transition:     160ms ease;
+            --font:           'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            --font-mono:      'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+            --font-size-xs:   11px;
+            --font-size-sm:   13px;
+            --font-size-base: 14px;
+
             display: block;
             width: 100%;
             height: 100vh;
@@ -53,242 +63,177 @@ export class CheatingDaddyApp extends LitElement {
             color: var(--text-primary);
         }
 
-        /* ── App shell: icon-rail + content ── */
+        /* ── App shell: top-nav + content (vertical stack) ── */
 
         .app-shell {
             display: flex;
+            flex-direction: column;
             height: 100vh;
             overflow: hidden;
         }
 
-        /* ── Thin invisible drag strip ── */
+        /* ── Top navigation bar ── */
 
-        .drag-strip {
-            position: fixed;
-            top: 0;
-            left: 56px;
-            right: 0;
-            height: 20px;
-            -webkit-app-region: drag;
-            z-index: 9999;
-            pointer-events: all;
-        }
-
-        .drag-strip.hidden {
-            display: none;
-        }
-
-        /* ── Icon rail (new sidebar) ── */
-
-        .icon-rail {
-            width: 56px;
-            min-width: 56px;
-            height: 100vh;
-            background: rgba(8, 8, 10, 0.97);
-            border-right: 1px solid rgba(0, 212, 255, 0.1);
+        .top-nav {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            padding: 12px 0 10px;
             gap: 0;
+            padding: 0 12px;
+            height: 44px;
+            min-height: 44px;
+            background: rgba(9, 9, 11, 0.97);
+            border-bottom: 1px solid var(--border);
+            -webkit-app-region: drag;
+            flex-shrink: 0;
             position: relative;
             z-index: 100;
-            -webkit-app-region: no-drag;
-            animation: rail-fade-in 0.3s ease both;
         }
 
-        /* vertical scan-line on rail */
-        .icon-rail::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 1px;
-            height: 100%;
-            background: linear-gradient(
-                180deg,
-                transparent 0%,
-                rgba(0,212,255,0.35) 30%,
-                rgba(0,212,255,0.35) 70%,
-                transparent 100%
-            );
-        }
-
-        .icon-rail.hidden {
+        .top-nav.hidden {
             display: none;
         }
 
-        /* ── Brand mark ── */
+        /* ── Brand ── */
 
-        .rail-brand {
-            width: 34px;
-            height: 34px;
-            border-radius: 8px;
-            border: 1px solid rgba(0, 212, 255, 0.3);
-            background: rgba(0, 212, 255, 0.07);
+        .nav-brand {
             display: flex;
             align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            font-weight: 700;
-            color: #00d4ff;
-            letter-spacing: -0.05em;
-            margin-bottom: 14px;
-            box-shadow: 0 0 12px rgba(0,212,255,0.12);
+            gap: 7px;
+            -webkit-app-region: no-drag;
+            margin-right: 4px;
             flex-shrink: 0;
-            font-family: var(--font-mono);
         }
 
-        /* ── Nav icons ── */
-
-        .rail-nav {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 2px;
-            width: 100%;
-        }
-
-        .rail-item {
-            position: relative;
-            width: 100%;
-            height: 40px;
+        .nav-brand-mark {
+            width: 26px;
+            height: 26px;
+            border-radius: 7px;
+            background: #6366F1;
             display: flex;
             align-items: center;
             justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -0.03em;
+            flex-shrink: 0;
+            box-shadow: 0 0 0 1px rgba(99,102,241,0.5), 0 2px 8px rgba(99,102,241,0.3);
+        }
+
+        .nav-brand-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            letter-spacing: -0.01em;
+        }
+
+        /* ── Nav items ── */
+
+        .nav-items {
+            display: flex;
+            align-items: center;
+            gap: 1px;
+            flex: 1;
+            -webkit-app-region: no-drag;
+            padding: 0 8px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 10px;
+            border-radius: var(--radius-sm);
             border: none;
             background: none;
-            color: rgba(255,255,255,0.22);
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 500;
             cursor: pointer;
-            padding: 0;
-            transition: color 0.18s;
-        }
-
-        .rail-item svg {
-            width: 18px;
-            height: 18px;
-            transition: color 0.18s;
-        }
-
-        .rail-item:hover {
-            color: rgba(0, 212, 255, 0.85);
-        }
-
-        .rail-item:hover::after {
-            content: attr(data-label);
-            position: absolute;
-            left: calc(100% + 10px);
-            top: 50%;
-            transform: translateY(-50%);
-            background: rgba(8,8,10,0.95);
-            border: 1px solid rgba(0,212,255,0.3);
-            color: #e8e8e8;
-            font-size: 11px;
-            font-family: var(--font-mono);
+            transition: color var(--transition), background var(--transition);
             white-space: nowrap;
-            padding: 4px 10px;
-            border-radius: 4px;
-            pointer-events: none;
-            z-index: 999;
-            box-shadow: 0 0 12px rgba(0,212,255,0.1);
+            position: relative;
         }
 
-        /* Active state: left neon bar */
-        .rail-item.active {
-            color: #00d4ff;
+        .nav-item svg {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
         }
 
-        .rail-item.active::before {
+        .nav-item:hover {
+            color: var(--text-secondary);
+            background: var(--bg-elevated);
+        }
+
+        .nav-item.active {
+            color: var(--text-primary);
+            background: rgba(99, 102, 241, 0.12);
+        }
+
+        .nav-item.active::after {
             content: '';
             position: absolute;
-            left: 0;
-            top: 20%;
-            height: 60%;
-            width: 2px;
-            background: #00d4ff;
-            border-radius: 0 2px 2px 0;
-            box-shadow: 0 0 8px rgba(0,212,255,0.7), 0 0 16px rgba(0,212,255,0.3);
+            bottom: -1px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 20px;
+            height: 2px;
+            background: #6366F1;
+            border-radius: 2px 2px 0 0;
         }
 
-        /* ── Rail footer — window controls ── */
+        /* ── Nav end: version + window controls ── */
 
-        .rail-footer {
+        .nav-end {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            gap: 4px;
-            padding-bottom: 4px;
-            width: 100%;
+            gap: 6px;
+            -webkit-app-region: no-drag;
+            margin-left: 4px;
+            flex-shrink: 0;
         }
 
-        .version-badge {
-            font-size: 9px;
-            color: rgba(255,255,255,0.14);
+        .version-tag {
+            font-size: 10px;
+            color: var(--text-muted);
             font-family: var(--font-mono);
-            text-align: center;
-            letter-spacing: 0.04em;
-            padding: 3px 0 6px;
         }
 
-        /* ── Window control buttons (custom, no macOS dots) ── */
+        /* ── Main content area ── */
+        /* ── Window control buttons ── */
 
         .wc-btn {
-            width: 32px;
-            height: 22px;
+            width: 26px;
+            height: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 4px;
-            border: 1px solid transparent;
+            border-radius: 5px;
+            border: 1px solid var(--border);
             background: transparent;
             cursor: pointer;
-            transition: all 0.15s;
-            font-family: var(--font-mono);
-            font-size: 11px;
-            letter-spacing: 0.03em;
+            transition: all var(--transition);
         }
 
         .wc-btn.minimize {
-            color: rgba(254, 188, 46, 0.45);
-            border-color: rgba(254, 188, 46, 0.18);
+            color: rgba(255,255,255,0.3);
         }
 
         .wc-btn.minimize:hover {
-            color: #febc2e;
-            border-color: rgba(254,188,46,0.6);
-            background: rgba(254,188,46,0.08);
-            box-shadow: 0 0 8px rgba(254,188,46,0.2);
+            color: var(--text-secondary);
+            background: var(--bg-elevated);
+            border-color: var(--border-strong);
         }
 
         .wc-btn.close {
-            color: rgba(239, 68, 68, 0.45);
-            border-color: rgba(239, 68, 68, 0.18);
+            color: rgba(255,255,255,0.3);
         }
 
         .wc-btn.close:hover {
-            color: #ef4444;
-            border-color: rgba(239,68,68,0.6);
-            background: rgba(239,68,68,0.08);
-            box-shadow: 0 0 8px rgba(239,68,68,0.2);
-            animation: update-pulse 1.2s ease infinite;
-        }
-
-        /* ── Fixed top-right window controls ── */
-
-        .window-controls {
-            position: fixed;
-            top: 10px;
-            right: 12px;
-            z-index: 9999;
-            display: flex;
-            gap: 6px;
-            align-items: center;
-            -webkit-app-region: no-drag;
-        }
-
-        .window-controls.hidden {
-            display: none;
+            color: #ff5f57;
+            border-color: rgba(239,68,68,0.5);
+            background: rgba(239,68,68,0.1);
         }
 
         .update-dot {
@@ -296,12 +241,9 @@ export class CheatingDaddyApp extends LitElement {
             height: 6px;
             border-radius: 50%;
             background: var(--danger);
-            box-shadow: 0 0 6px rgba(239,68,68,0.8);
-            animation: status-blink 2s ease-in-out infinite;
-            margin-bottom: 2px;
+            box-shadow: 0 0 6px rgba(239,68,68,0.7);
+            animation: status-pulse 2s ease-in-out infinite;
         }
-
-        /* ── Main content area ── */
 
         .content {
             flex: 1;
@@ -339,13 +281,13 @@ export class CheatingDaddyApp extends LitElement {
             display: flex;
             align-items: center;
             justify-content: center;
-            color: rgba(239,68,68,0.55);
+            color: var(--text-muted);
             cursor: pointer;
             background: none;
-            border: 1px solid rgba(239,68,68,0.2);
-            padding: 3px 8px;
-            border-radius: 3px;
-            transition: all 0.15s;
+            border: 1px solid var(--border);
+            padding: 3px 10px;
+            border-radius: var(--radius-sm);
+            transition: all var(--transition);
             font-size: 10px;
             font-family: var(--font-mono);
             letter-spacing: 0.06em;
@@ -354,7 +296,7 @@ export class CheatingDaddyApp extends LitElement {
         }
 
         .live-bar-back:hover {
-            color: #ef4444;
+            color: var(--danger);
             border-color: rgba(239,68,68,0.5);
             background: rgba(239,68,68,0.08);
         }
@@ -367,11 +309,11 @@ export class CheatingDaddyApp extends LitElement {
         .live-profile-tag {
             font-size: 10px;
             font-family: var(--font-mono);
-            color: rgba(0,212,255,0.55);
+            color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.1em;
-            border: 1px solid rgba(0,212,255,0.15);
-            border-radius: 3px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
             padding: 2px 8px;
         }
 
@@ -389,9 +331,9 @@ export class CheatingDaddyApp extends LitElement {
             width: 5px;
             height: 5px;
             border-radius: 50%;
-            background: #22c55e;
-            box-shadow: 0 0 6px rgba(34,197,94,0.8);
-            animation: status-blink 2s ease-in-out infinite;
+            background: var(--success);
+            box-shadow: 0 0 6px rgba(34,197,94,0.6);
+            animation: status-pulse 2s ease-in-out infinite;
         }
 
         .live-session-label {
@@ -412,36 +354,43 @@ export class CheatingDaddyApp extends LitElement {
 
         .live-bar-text {
             font-size: 10px;
-            color: rgba(255,255,255,0.3);
+            color: var(--text-muted);
             font-family: var(--font-mono);
             white-space: nowrap;
         }
 
         .live-bar-text.hot {
-            color: rgba(0,212,255,0.6);
+            color: var(--accent);
         }
 
         .live-bar-text.clickable {
             cursor: pointer;
-            border: 1px solid rgba(0,212,255,0.15);
-            border-radius: 3px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
             padding: 2px 8px;
-            transition: all 0.15s;
-            color: rgba(0,212,255,0.5);
+            transition: all var(--transition);
         }
 
         .live-bar-text.clickable:hover {
-            color: #00d4ff;
-            border-color: rgba(0,212,255,0.5);
-            background: rgba(0,212,255,0.06);
+            color: var(--text-secondary);
+            border-color: var(--border-strong);
+            background: var(--bg-elevated);
         }
 
         /* ── Content inner ── */
 
         .content-inner {
             flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
             overflow-y: auto;
             overflow-x: hidden;
+        }
+
+        .content-inner > * {
+            flex: 1;
+            min-height: 0;
         }
 
         .content-inner.live {
@@ -464,11 +413,11 @@ export class CheatingDaddyApp extends LitElement {
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb {
-            background: rgba(0,212,255,0.15);
+            background: var(--border-strong);
             border-radius: 2px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: rgba(0,212,255,0.35);
+            background: #52525B;
         }
     `;
 
@@ -1078,25 +1027,33 @@ export class CheatingDaddyApp extends LitElement {
         ];
 
         return html`
-            <div class="icon-rail ${this._isLiveMode() ? 'hidden' : ''}">
-                <!-- Brand mark -->
-                <div class="rail-brand">G</div>
+            <div class="top-nav ${this._isLiveMode() ? 'hidden' : ''}">
+                <!-- Brand -->
+                <div class="nav-brand">
+                    <div class="nav-brand-mark">G</div>
+                    <span class="nav-brand-name">GSV</span>
+                </div>
 
-                <!-- Nav icons -->
-                <nav class="rail-nav">
+                <!-- Nav items -->
+                <nav class="nav-items">
                     ${items.map(item => html`
                         <button
-                            class="rail-item ${this.currentView === item.id ? 'active' : ''}"
-                            data-label="${item.label}"
+                            class="nav-item ${this.currentView === item.id ? 'active' : ''}"
                             @click=${() => this.navigate(item.id)}
-                        >${item.icon}</button>
+                        >${item.icon}${item.label}</button>
                     `)}
                 </nav>
 
-                <!-- Footer: version + update dot only -->
-                <div class="rail-footer">
+                <!-- End: version tag + wc buttons -->
+                <div class="nav-end">
                     ${this._updateAvailable ? html`<div class="update-dot" title="Update available"></div>` : ''}
-                    <div class="version-badge">${this._localVersion ? 'v' + this._localVersion : ''}</div>
+                    ${this._localVersion ? html`<span class="version-tag">v${this._localVersion}</span>` : ''}
+                    <button class="wc-btn minimize" @click=${() => this._handleMinimize()} title="Minimise">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </button>
+                    <button class="wc-btn close" @click=${() => this.handleClose()} title="Close">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
+                    </button>
                 </div>
             </div>
         `;
@@ -1137,7 +1094,7 @@ export class CheatingDaddyApp extends LitElement {
     }
 
     render() {
-        // Onboarding is fullscreen, no sidebar
+        // Onboarding is fullscreen, no nav
         if (this.currentView === 'onboarding') {
             return html`
                 <div class="fullscreen">
@@ -1151,20 +1108,7 @@ export class CheatingDaddyApp extends LitElement {
 
         return html`
             <div class="app-shell">
-                <!-- Thin invisible drag strip replaces macOS traffic-light bar -->
-                <div class="drag-strip ${isLive ? 'hidden' : ''}"></div>
-
-                <!-- Fixed top-right window controls -->
-                <div class="window-controls ${isLive ? 'hidden' : ''}">
-                    <button class="wc-btn minimize" @click=${() => this._handleMinimize()} title="Minimise">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    </button>
-                    <button class="wc-btn close" @click=${() => this.handleClose()} title="Close">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
-                    </button>
-                </div>
-
-                <!-- Icon rail sidebar -->
+                <!-- Top navigation bar -->
                 ${this.renderSidebar()}
 
                 <div class="content">

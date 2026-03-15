@@ -1,17 +1,33 @@
 const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');
+const fs = require('fs');
+const path = require('path');
 
 const windowsCertificateFile = process.env.WIN_CSC_LINK;
 const windowsCertificatePassword = process.env.WIN_CSC_KEY_PASSWORD;
 const remoteReleases = process.env.SQUIRREL_REMOTE_RELEASES;
+
+const baseDir = __dirname;
+const extraResource = [path.join(baseDir, 'src/assets/SystemAudioDump')];
+const optionalWindowsBundle = path.join(baseDir, 'build/windows');
+if (fs.existsSync(optionalWindowsBundle)) {
+    extraResource.push(optionalWindowsBundle);
+}
 
 module.exports = {
     packagerConfig: {
         asar: {
             unpack: '**/{onnxruntime-node,onnxruntime-common,@huggingface/transformers,sharp,@img}/**',
         },
-        extraResource: ['./src/assets/SystemAudioDump'],
+        extraResource,
         name: 'GSV',
+        win32metadata: {
+            CompanyName: 'gurugsv',
+            FileDescription: 'GSV',
+            OriginalFilename: 'GSV.exe',
+            ProductName: 'GSV',
+            InternalName: 'GSV',
+        },
         icon: 'src/assets/logo',
         ...(windowsCertificateFile
             ? {

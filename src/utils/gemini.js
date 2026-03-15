@@ -128,7 +128,7 @@ async function resolveProviderSecrets(accessToken, options = {}) {
         throw new Error('Invalid secret response payload');
     }
 
-    runtimeProviderSecrets = {
+    const resolvedSecrets = {
         geminiApiKey: data.geminiApiKey || '',
         groqApiKey: data.groqApiKey || '',
         azureApiKey: data.azureApiKey || '',
@@ -136,10 +136,15 @@ async function resolveProviderSecrets(accessToken, options = {}) {
         azureDeployment: data.azureDeployment || '',
         cloudToken: data.cloudToken || '',
     };
-    runtimeSecretsToken = token;
-    runtimeSecretsResolvedAt = now;
 
-    return { success: true, data: runtimeProviderSecrets };
+    const shouldCacheSecrets = consume || data.secretsIssued === true;
+    if (shouldCacheSecrets) {
+        runtimeProviderSecrets = resolvedSecrets;
+        runtimeSecretsToken = token;
+        runtimeSecretsResolvedAt = now;
+    }
+
+    return { success: true, data: shouldCacheSecrets ? runtimeProviderSecrets : resolvedSecrets };
 }
 
 function formatSpeakerResults(results) {

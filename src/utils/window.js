@@ -5,23 +5,30 @@ const storage = require('../storage');
 let mouseEventsIgnored = false;
 let currentView = 'main';
 
+const DEFAULT_WIDTH = 1080;
+const DEFAULT_HEIGHT = 560;
+const LIVE_WIDTH = 850;
+const LIVE_HEIGHT = 400;
+
 function createWindow(sendToRenderer, geminiSessionRef) {
-    // Keep window compact — never more than 60% width / 38% height of the screen
+    const visibleMode = true;
+
+    // Default app shell size for navigation pages
     const workArea = screen.getPrimaryDisplay().workAreaSize;
-    let windowWidth = Math.min(Math.floor(workArea.width * 0.58), 720);
-    let windowHeight = Math.min(Math.floor(workArea.height * 0.38), 380);
+    let windowWidth = Math.min(Math.floor(workArea.width * 0.92), DEFAULT_WIDTH);
+    let windowHeight = Math.min(Math.floor(workArea.height * 0.85), DEFAULT_HEIGHT);
 
     const mainWindow = new BrowserWindow({
         width: windowWidth,
         height: windowHeight,
-        minWidth: 480,
-        minHeight: 300,
+        minWidth: 840,
+        minHeight: 420,
         maxHeight: workArea.height,
         frame: false,
-        transparent: true,
-        hasShadow: false,
-        alwaysOnTop: true,
-        skipTaskbar: true,
+        transparent: !visibleMode,
+        hasShadow: visibleMode,
+        alwaysOnTop: !visibleMode,
+        skipTaskbar: !visibleMode,
         maximizable: false,
         webPreferences: {
             nodeIntegration: true,
@@ -32,7 +39,7 @@ function createWindow(sendToRenderer, geminiSessionRef) {
             allowRunningInsecureContent: false,
             devTools: !require('electron').app.isPackaged,
         },
-        backgroundColor: '#00000000',
+        backgroundColor: visibleMode ? '#0A0A0A' : '#00000000',
     });
 
     mouseEventsIgnored = false;
@@ -49,11 +56,11 @@ function createWindow(sendToRenderer, geminiSessionRef) {
     );
 
     mainWindow.setResizable(true);
-    mainWindow.setContentProtection(true);
-    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    mainWindow.setContentProtection(!visibleMode);
+    mainWindow.setVisibleOnAllWorkspaces(!visibleMode, { visibleOnFullScreen: !visibleMode });
 
     // Hide from Mission Control on macOS
-    if (process.platform === 'darwin') {
+    if (!visibleMode && process.platform === 'darwin') {
         try {
             mainWindow.setHiddenInMissionControl(true);
         } catch (error) {
@@ -61,14 +68,14 @@ function createWindow(sendToRenderer, geminiSessionRef) {
         }
     }
 
-    // Center window horizontally, place in upper third vertically
+    // Center window horizontally and align to top work area
     const primaryDisplay = screen.getPrimaryDisplay();
-    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+    const { width: screenWidth } = primaryDisplay.workAreaSize;
     const x = Math.floor((screenWidth - windowWidth) / 2);
-    const y = Math.floor((screenHeight - windowHeight) / 3);
+    const y = 0;
     mainWindow.setPosition(x, y);
 
-    if (process.platform === 'win32') {
+    if (!visibleMode && process.platform === 'win32') {
         mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
     }
 
@@ -378,22 +385,23 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         if (!mainWindow.isDestroyed()) {
             currentView = view;
             const primaryDisplay = screen.getPrimaryDisplay();
-            const { width: screenWidth } = primaryDisplay.workAreaSize;
+            const workArea = primaryDisplay.workArea;
+            const { width: screenWidth, x: workX, y: workY } = workArea;
 
             if (view === 'assistant') {
                 // Shrink window for live view
-                const liveWidth = 850;
-                const liveHeight = 400;
-                const x = Math.floor((screenWidth - liveWidth) / 2);
+                const liveWidth = Math.min(Math.floor(workArea.width * 0.88), LIVE_WIDTH);
+                const liveHeight = Math.min(Math.floor(workArea.height * 0.65), LIVE_HEIGHT);
+                const x = workX + Math.floor((screenWidth - liveWidth) / 2);
                 mainWindow.setSize(liveWidth, liveHeight);
-                mainWindow.setPosition(x, 0);
+                mainWindow.setPosition(x, workY);
             } else {
                 // Restore full size
-                const fullWidth = 1100;
-                const fullHeight = 800;
-                const x = Math.floor((screenWidth - fullWidth) / 2);
+                const fullWidth = Math.min(Math.floor(workArea.width * 0.92), DEFAULT_WIDTH);
+                const fullHeight = Math.min(Math.floor(workArea.height * 0.85), DEFAULT_HEIGHT);
+                const x = workX + Math.floor((screenWidth - fullWidth) / 2);
                 mainWindow.setSize(fullWidth, fullHeight);
-                mainWindow.setPosition(x, 0);
+                mainWindow.setPosition(x, workY);
                 mouseEventsIgnored = false;
                 mainWindow.setIgnoreMouseEvents(false);
                 mainWindow.webContents.send('click-through-toggled', false);
@@ -491,8 +499,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                 dockRightFullHeight();
                 break;
             case 'default': {
-                const defaultWidth = 850;
-                const defaultHeight = 400;
+                const defaultWidth = Math.min(Math.floor(screenWidth * 0.92), DEFAULT_WIDTH);
+                const defaultHeight = Math.min(Math.floor(screenHeight * 0.85), DEFAULT_HEIGHT);
                 width = defaultWidth;
                 height = defaultHeight;
                 x = workX + Math.floor((screenWidth - defaultWidth) / 2);

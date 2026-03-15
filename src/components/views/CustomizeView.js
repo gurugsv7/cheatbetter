@@ -8,88 +8,50 @@ export class CustomizeView extends LitElement {
             /* ── Settings page header banner ── */
             .settings-banner {
                 position: relative;
-                overflow: hidden;
-                border: 1px solid rgba(0, 212, 255, 0.2);
+                border: 1px solid var(--border);
                 border-radius: var(--radius-md);
                 padding: 16px 20px;
-                background: linear-gradient(135deg, rgba(0,212,255,0.06) 0%, rgba(25,25,25,0.9) 100%);
+                background: var(--bg-surface);
                 display: flex;
                 align-items: center;
                 gap: 12px;
                 margin-bottom: 4px;
             }
 
-            .settings-banner::before {
-                content: '';
-                position: absolute;
-                inset: 0;
-                background: repeating-linear-gradient(
-                    0deg,
-                    transparent,
-                    transparent 20px,
-                    rgba(0,212,255,0.025) 20px,
-                    rgba(0,212,255,0.025) 21px
-                );
-                pointer-events: none;
-            }
-
             .settings-banner-title {
                 font-size: var(--font-size-xl);
                 font-weight: var(--font-weight-semibold);
-                background: linear-gradient(90deg, #e8e8e8 0%, #00d4ff 70%);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                background-clip: text;
+                color: var(--text-primary);
                 letter-spacing: -0.02em;
             }
 
             .settings-banner-sub {
                 font-size: 11px;
-                color: rgba(0,212,255,0.45);
-                font-family: var(--font-mono);
+                color: var(--text-muted);
                 margin-top: 2px;
             }
 
             /* ── Danger surface ── */
             .danger-surface {
-                border-color: rgba(239, 68, 68, 0.35) !important;
+                border-color: rgba(239, 68, 68, 0.3) !important;
                 background: rgba(239,68,68,0.04) !important;
-                animation: none !important;
-            }
-
-            .danger-surface::before {
-                border-color: rgba(239, 68, 68, 0.5) !important;
             }
 
             .danger-surface:hover {
-                border-color: rgba(239,68,68,0.6) !important;
-                box-shadow: 0 0 18px rgba(239,68,68,0.12) !important;
+                border-color: rgba(239,68,68,0.5) !important;
+                box-shadow: 0 4px 16px rgba(239,68,68,0.1) !important;
             }
 
             .warning-callout {
                 position: relative;
                 margin-top: 4px;
                 padding: 8px 12px;
-                border: 1px solid rgba(239,68,68,0.4);
+                border: 1px solid rgba(239,68,68,0.3);
                 border-radius: var(--radius-sm);
                 color: var(--danger);
                 font-size: var(--font-size-xs);
                 line-height: 1.4;
                 background: rgba(239, 68, 68, 0.06);
-                font-family: var(--font-mono);
-            }
-
-            .warning-callout::before {
-                content: '';
-                position: absolute;
-                top: -6px;
-                left: 16px;
-                width: 10px;
-                height: 10px;
-                background: rgba(10,5,5,0.95);
-                border-top: 1px solid rgba(239,68,68,0.4);
-                border-left: 1px solid rgba(239,68,68,0.4);
-                transform: rotate(45deg);
             }
 
             /* ── Toggle row ── */
@@ -98,21 +60,20 @@ export class CustomizeView extends LitElement {
                 align-items: center;
                 gap: var(--space-sm);
                 padding: var(--space-sm) 12px;
-                border: 1px solid rgba(0,212,255,0.12);
+                border: 1px solid var(--border);
                 border-radius: var(--radius-sm);
-                background: rgba(0,212,255,0.03);
-                transition: border-color 0.2s, background 0.2s;
+                background: var(--bg-elevated);
+                transition: border-color var(--transition), background var(--transition);
             }
 
             .toggle-row:hover {
-                border-color: rgba(0,212,255,0.28);
-                background: rgba(0,212,255,0.06);
+                border-color: var(--border-strong);
             }
 
             .toggle-input {
                 width: 14px;
                 height: 14px;
-                accent-color: #00d4ff;
+                accent-color: var(--accent);
                 cursor: pointer;
             }
 
@@ -141,9 +102,9 @@ export class CustomizeView extends LitElement {
             .slider-value {
                 font-family: var(--font-mono);
                 font-size: var(--font-size-xs);
-                color: #00d4ff;
-                background: rgba(0,212,255,0.08);
-                border: 1px solid rgba(0,212,255,0.2);
+                color: var(--text-secondary);
+                background: var(--bg-elevated);
+                border: 1px solid var(--border);
                 border-radius: var(--radius-sm);
                 padding: 2px 8px;
             }
@@ -154,7 +115,7 @@ export class CustomizeView extends LitElement {
                 width: 100%;
                 height: 3px;
                 border-radius: 2px;
-                background: linear-gradient(90deg, rgba(0,212,255,0.6) 0%, rgba(0,212,255,0.15) 100%);
+                background: var(--border-strong);
                 outline: none;
                 cursor: pointer;
             }
@@ -165,18 +126,18 @@ export class CustomizeView extends LitElement {
                 width: 14px;
                 height: 14px;
                 border-radius: 50%;
-                background: #00d4ff;
+                background: var(--accent);
                 border: none;
-                box-shadow: 0 0 8px rgba(0,212,255,0.6);
+                box-shadow: 0 0 0 2px rgba(99,102,241,0.3);
             }
 
             .slider-input::-moz-range-thumb {
                 width: 14px;
                 height: 14px;
                 border-radius: 50%;
-                background: #00d4ff;
+                background: var(--accent);
                 border: none;
-                box-shadow: 0 0 8px rgba(0,212,255,0.6);
+                box-shadow: 0 0 0 2px rgba(99,102,241,0.3);
             }
 
             /* ── Keybind ── */
@@ -185,7 +146,7 @@ export class CustomizeView extends LitElement {
                 align-items: center;
                 justify-content: space-between;
                 padding: var(--space-sm) 0;
-                border-bottom: 1px solid rgba(0,212,255,0.08);
+                border-bottom: 1px solid var(--border);
             }
 
             .keybind-row:last-of-type {
@@ -203,28 +164,27 @@ export class CustomizeView extends LitElement {
                 text-align: center;
                 font-family: var(--font-mono);
                 font-size: var(--font-size-xs);
-                background: rgba(0,212,255,0.05) !important;
-                border-color: rgba(0,212,255,0.2) !important;
-                color: #00d4ff !important;
+                background: var(--bg-elevated) !important;
+                border-color: var(--border) !important;
+                color: var(--text-secondary) !important;
             }
 
             /* ── Danger button ── */
             .danger-button {
-                border: 1px solid rgba(239,68,68,0.5);
+                border: 1px solid rgba(239,68,68,0.4);
                 color: var(--danger);
                 background: transparent;
                 border-radius: var(--radius-sm);
                 padding: 9px 14px;
                 font-size: var(--font-size-sm);
-                font-family: var(--font-mono);
                 cursor: pointer;
                 transition: background var(--transition), box-shadow var(--transition);
-                letter-spacing: 0.03em;
             }
 
             .danger-button:hover {
-                background: rgba(239, 68, 68, 0.11);
-                box-shadow: 0 0 10px rgba(239,68,68,0.15);
+                background: rgba(239, 68, 68, 0.1);
+                border-color: rgba(239,68,68,0.65);
+                box-shadow: 0 0 10px rgba(239,68,68,0.1);
             }
 
             .danger-button:disabled {
@@ -792,8 +752,8 @@ export class CustomizeView extends LitElement {
                 <div class="unified-wrap">
                     <div class="settings-banner">
                         <div>
-                            <div class="settings-banner-title">System Settings</div>
-                            <div class="settings-banner-sub">// configure runtime parameters</div>
+                            <div class="settings-banner-title">Settings</div>
+                            <div class="settings-banner-sub">Configure runtime parameters</div>
                         </div>
                     </div>
                     ${this.renderAudioSection()}
